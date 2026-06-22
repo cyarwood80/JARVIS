@@ -20,6 +20,7 @@
     "express": "^4.19.2",
     "node-cron": "^4.4.1",
     "node-notifier": "^10.0.1",
+    "puppeteer": "^25.1.0",
     "systeminformation": "^5.22.8",
     "ws": "^8.17.0"
   }

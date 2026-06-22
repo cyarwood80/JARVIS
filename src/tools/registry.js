@@ -30,5 +30,20 @@ export const openAiTools = [
                 required: ["command"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "browse_website",
+            description: "Uses a full Chromium browser to navigate to a URL and extract the page text. Crucial for heavily dynamic or Javascript-rendered websites. Supports a 'visible' boolean parameter: if true, the browser opens visibly on the user's screen; if false, it runs silently in the background.",
+            parameters: {
+                type: "object",
+                properties: { 
+                    url: { type: "string", description: "The full URL to browse to." },
+                    visible: { type: "boolean", description: "Set to true to make the browser visible on the user's desktop, false for headless mode." }
+                },
+                required: ["url", "visible"]
+            }
+        }
     }
 ];

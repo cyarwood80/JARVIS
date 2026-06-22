@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { search, SafeSearchType } from 'duck-duck-scrape';
 import notifier from 'node-notifier';
+import puppeteer from 'puppeteer';
 import { ROOT_DIR, PORT } from '../config.js';
 import { manageMemoryAction } from '../services/memory.service.js';
 import { getPcDiagnostics } from '../services/system.service.js';
@@ -121,6 +122,35 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
             return `Web Search Results for "${args.query}":\n\n${topResults}`;
         } catch (err) {
             return `Web search failed: ${err.message}`;
+        }
+    }
+
+    if (name === 'browse_website') {
+        let browser;
+        try {
+            const isHeadless = args.visible !== true;
+            if (broadcastMsg) broadcastMsg({ type: 'log', message: `[Browser] Launching ${isHeadless ? 'headless ' : ''}Chromium for ${args.url}...` });
+            
+            browser = await puppeteer.launch({ 
+                headless: isHeadless,
+                defaultViewport: null,
+                args: ['--start-maximized', '--no-sandbox']
+            });
+            const page = await browser.newPage();
+            await page.goto(args.url, { waitUntil: 'networkidle2', timeout: 30000 });
+            
+            // If they made it visible, they probably want to see it for a few seconds even if it's just scraping
+            if (!isHeadless) await new Promise(r => setTimeout(r, 4000));
+            
+            const text = await page.evaluate(() => document.body.innerText);
+            // Clean up massive whitespace and limit to 8000 characters to prevent context window explosion
+            const cleanedText = text.replace(/[\r\n]+/g, '\n').replace(/\s{2,}/g, ' ').substring(0, 8000);
+            
+            await browser.close();
+            return `Extracted text from ${args.url}:\n\n${cleanedText}...`;
+        } catch (err) {
+            if (browser) await browser.close();
+            return `Failed to browse website: ${err.message}`;
         }
     }
 
