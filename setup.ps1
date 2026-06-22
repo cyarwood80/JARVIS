@@ -73,8 +73,26 @@ foreach ($model in $models) {
     }
 }
 
-# 4. Piper TTS Setup
-Write-Host "`n[4/5] Setting up Piper TTS..." -ForegroundColor Yellow
+# 4. OpenClaw Gateway dependencies
+Write-Host "`n[4/5] Installing OpenClaw dependencies..." -ForegroundColor Yellow
+if (Test-Path "openclaw\package.json") {
+    Push-Location openclaw
+    npm install
+    Write-Host "Fetching Chromium for OpenClaw (Puppeteer)..." -ForegroundColor DarkGray
+    npx puppeteer browsers install chrome
+    Pop-Location
+} else {
+    Write-Host "OpenClaw directory not found. Skipping." -ForegroundColor DarkGray
+}
+
+# 5. Main JARVIS dependencies
+Write-Host "`n[5/5] Installing JARVIS dependencies..." -ForegroundColor Yellow
+npm install
+Write-Host "Fetching Chromium for JARVIS built-in browser..." -ForegroundColor DarkGray
+npx puppeteer browsers install chrome
+
+# 6. Piper TTS Setup
+Write-Host "`n[6/6] Setting up Piper TTS..." -ForegroundColor Yellow
 if (Test-Path "download-piper.ps1") {
     Write-Host "Executing Piper download script..."
     powershell.exe -ExecutionPolicy Bypass -File "download-piper.ps1"
@@ -82,8 +100,8 @@ if (Test-Path "download-piper.ps1") {
     Write-Host "download-piper.ps1 not found, skipping." -ForegroundColor DarkGray
 }
 
-# 5. Environment Config
-Write-Host "`n[5/5] Configuring Environment Variables..." -ForegroundColor Yellow
+# 7. Environment Config
+Write-Host "`n[7/7] Configuring Environment Variables..." -ForegroundColor Yellow
 if (!(Test-Path ".env")) {
     $apiKey = Read-Host "Please enter your Gemini API Key (leave blank to skip)"
     if (![string]::IsNullOrWhiteSpace($apiKey)) {

@@ -11,7 +11,7 @@ logs
 *.pid.lock
 
 # Vault memory files
-vault/chris.md
+vault/*.md
 
 # Auto-generated script files and metadata
 scripts/
