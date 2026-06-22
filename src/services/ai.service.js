@@ -136,10 +136,12 @@ export async function geminiPlan(messages, broadcastLog) {
     }
 }
 
-export async function geminiSynthesise(userQuestion, toolName, toolArgs, toolOutput, broadcastLog) {
-    if (!GEMINI_API_KEY) return await localSynthesise(userQuestion, toolOutput);
+export async function geminiSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog) {
+    if (!GEMINI_API_KEY) return await localSynthesise(messages, toolOutput);
 
-    const prompt = `User asked: "${userQuestion}"\nTool ran: ${toolName}(${JSON.stringify(toolArgs)})\nRaw output:\n${toolOutput}\nWrite a clear response.`;
+    const userQuestion = messages[messages.length - 1]?.content || "";
+    const historyText = messages.slice(-5, -1).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const prompt = `Recent Conversation:\n${historyText}\n\nUser just asked: "${userQuestion}"\nTool ran: ${toolName}(${JSON.stringify(toolArgs)})\nRaw output:\n${toolOutput}\n\nWrite a clear, helpful response based on the tool output and conversation context.`;
     
     try {
         const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -150,14 +152,16 @@ export async function geminiSynthesise(userQuestion, toolName, toolArgs, toolOut
     } catch (e) {
         if (isRateLimitError(e)) {
             broadcastLog('[Synthesiser] Quota hit — using local fallback');
-            return await localSynthesise(userQuestion, toolOutput);
+            return await localSynthesise(messages, toolOutput);
         }
         throw e;
     }
 }
 
-export async function localSynthesise(userQuestion, toolOutput) {
-    const prompt = `User asked: "${userQuestion}"\nRaw output:\n${toolOutput}\nWrite a natural language response.`;
+export async function localSynthesise(messages, toolOutput) {
+    const userQuestion = messages[messages.length - 1]?.content || "";
+    const historyText = messages.slice(-3, -1).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const prompt = `Recent context:\n${historyText}\nUser asked: "${userQuestion}"\nRaw output:\n${toolOutput}\nWrite a natural language response summarizing the output to the user.`;
     try {
         const data = await runLocalModel('llama3:8b-instruct-q8_0', [{ role: 'user', content: prompt }]);
         return data.message?.content || `Output:\n${toolOutput}`;

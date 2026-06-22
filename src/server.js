@@ -188,7 +188,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (toolWasUsed && toolOutput) {
         broadcastStatus('synthesising', '✨ Gemini synthesising...');
         try {
-            finalResponseText = await geminiSynthesise(userQuestion, toolName, toolArgs, toolOutput, broadcastLog);
+            finalResponseText = await geminiSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog);
             modelUsed += '+gemini';
         } catch {
             finalResponseText = `Output:\n${toolOutput}`;
@@ -224,7 +224,20 @@ app.post('/v1/chat/completions', async (req, res) => {
             try {
                 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
                 const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                const history = messages.slice(0, -1).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+                
+                // Enforce strictly alternating roles for Gemini SDK
+                const history = [];
+                let expectedRole = 'user';
+                for (const m of messages.slice(0, -1)) {
+                    const mappedRole = m.role === 'assistant' ? 'model' : 'user';
+                    if (mappedRole === expectedRole) {
+                        history.push({ role: mappedRole, parts: [{ text: m.content }] });
+                        expectedRole = mappedRole === 'user' ? 'model' : 'user';
+                    } else if (history.length > 0) {
+                        history[history.length - 1].parts[0].text += `\n\n${m.content}`;
+                    }
+                }
+
                 const chat = geminiModel.startChat({ history });
                 const result = await chat.sendMessage(userQuestion);
                 finalResponseText = result.response.text();
