@@ -96,5 +96,12 @@ if (!(Test-Path ".env")) {
 
 Write-Host "`n=========================================" -ForegroundColor Cyan
 Write-Host "     Setup Complete!                     " -ForegroundColor Cyan
-Write-Host " Run 'npm start' to boot JARVIS.         " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
+
+$startNow = Read-Host "Do you want to start JARVIS now? (Y/N) [Default: Y]"
+if ([string]::IsNullOrWhiteSpace($startNow) -or $startNow.ToLower().StartsWith("y")) {
+    Write-Host "Starting JARVIS..." -ForegroundColor Green
+    npm start
+} else {
+    Write-Host "You can start JARVIS later by running 'npm start' in this directory." -ForegroundColor Cyan
+}
