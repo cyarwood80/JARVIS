@@ -104,10 +104,26 @@ export async function runLocalModel(modelName, messages, tools = null) {
     return data;
 }
 
-export async function localFallbackPlan(messages, broadcastLog) {
-    const latestPrompt = messages[messages.length - 1]?.content || "";
-    broadcastLog('[Local Planner] Gemini quota hit — falling back to local planner');
+export async function cloudPlan(messages) {
+    if (!GEMINI_API_KEY) throw new Error('No Gemini API key');
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    
+    const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const coreMemory = await getCoreMemory();
+    const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
+    const plannerPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
 
+    const result = await model.generateContent(plannerPrompt);
+    if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
+    
+    const raw = result.response.text().trim();
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    return JSON.parse(cleaned);
+}
+
+export async function localPlan(messages) {
+    const latestPrompt = messages[messages.length - 1]?.content || "";
     const coreMemory = await getCoreMemory();
     const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
     const localPlanPrompt = PLANNER_SYSTEM_PROMPT + envContext + coreMemory + `\n\nUser message: "${latestPrompt}"\n\nOutput JSON:`;
@@ -120,49 +136,36 @@ export async function localFallbackPlan(messages, broadcastLog) {
     return JSON.parse(jsonMatch[0]);
 }
 
-export async function geminiPlan(messages, broadcastLog) {
-    if (!GEMINI_API_KEY) throw new Error('No Gemini API key');
-    
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    
-    const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-    const coreMemory = await getCoreMemory();
-    const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
-    const plannerPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
-
+export async function jarvisPlan(messages, broadcastLog) {
     try {
-        const result = await model.generateContent(plannerPrompt);
-        if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
-        
-        const raw = result.response.text().trim();
-        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-        return JSON.parse(cleaned);
-    } catch (e) {
-        if (shouldFallbackToLocal(e)) return await localFallbackPlan(messages, broadcastLog);
-        throw e;
+        return await localPlan(messages);
+    } catch (localError) {
+        broadcastLog('[Local Planner] Failed or unavailable. Falling back to Cloud AI (Gemini)...');
+        return await cloudPlan(messages);
     }
 }
 
-export async function geminiSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog) {
-    if (!GEMINI_API_KEY) return await localSynthesise(messages, toolOutput);
-
+export async function cloudSynthesise(messages, toolName, toolArgs, toolOutput) {
+    if (!GEMINI_API_KEY) throw new Error('No API key');
     const userQuestion = messages[messages.length - 1]?.content || "";
     const historyText = messages.slice(-5, -1).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
     const prompt = `Recent Conversation:\n${historyText}\n\nUser just asked: "${userQuestion}"\nTool ran: ${toolName}(${JSON.stringify(toolArgs)})\nRaw output:\n${toolOutput}\n\nWrite a clear, helpful response based on the tool output and conversation context.`;
     
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const result = await model.generateContent(prompt);
+    if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
+    return result.response.text().trim();
+}
+
+export async function jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog) {
     try {
-        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-        const result = await model.generateContent(prompt);
-        if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
-        return result.response.text().trim();
+        const localResponse = await localSynthesise(messages, toolOutput);
+        if (localResponse.startsWith("Output:\\n")) throw new Error("Local model failed to synthesise");
+        return localResponse;
     } catch (e) {
-        if (shouldFallbackToLocal(e)) {
-            broadcastLog('[Synthesiser] API unavailable — using local fallback');
-            return await localSynthesise(messages, toolOutput);
-        }
-        throw e;
+        broadcastLog('[Synthesiser] Local model failed — using Cloud fallback');
+        return await cloudSynthesise(messages, toolName, toolArgs, toolOutput);
     }
 }
 

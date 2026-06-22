@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import { PORT, ROOT_DIR, GEMINI_API_KEY, MODEL_REGISTRY, modelWarmth, METRICS, COLD_THRESHOLD_MS, LARGE_MODELS, isModelCold, markModelWarm } from './config.js';
 import { startContextMonitors, startProactiveAgency, setupAutonomousSensors } from './services/system.service.js';
 import { updateInteractionTime, startSleepCycle } from './services/memory.service.js';
-import { refreshModels, geminiPlan, geminiSynthesise, runLocalModel } from './services/ai.service.js';
+import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel } from './services/ai.service.js';
 import { executeTool } from './tools/executor.js';
 
 const app = express();
@@ -101,7 +101,7 @@ app.get('/api/warmth', (req, res) => {
 
 app.post('/api/plan', async (req, res) => {
     try {
-        const plan = await geminiPlan(req.body.messages || [], broadcastLog);
+        const plan = await jarvisPlan(req.body.messages || [], broadcastLog);
         res.json({ plan });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -142,7 +142,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             let planningMessages = [...messages];
             if (errorFeedback) planningMessages.push({ role: 'user', content: `Error: ${errorFeedback}\nRevise plan.` });
             
-            plan = await geminiPlan(planningMessages, broadcastLog);
+            plan = await jarvisPlan(planningMessages, broadcastLog);
             if (!errorFeedback) broadcastStatus('planned', `🧠 Plan: ${plan.intent}`);
         } catch {
             usedGeminiDirectly = true;
@@ -190,67 +190,73 @@ app.post('/v1/chat/completions', async (req, res) => {
     if (toolWasUsed && toolOutput) {
         broadcastStatus('synthesising', isCloudEnabled ? '✨ Cloud AI (Gemini) synthesising...' : '✨ Local AI synthesising...');
         try {
-            finalResponseText = await geminiSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog);
-            modelUsed += '+gemini';
+            finalResponseText = await jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog);
+            modelUsed += '+synthesiser';
         } catch {
             finalResponseText = `Output:\n${toolOutput}`;
         }
     }
 
     if (usedGeminiDirectly || !finalResponseText) {
-        let geminiFailed = false;
+        let localFailed = false;
         
-        if (GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '') {
-            broadcastStatus('generating', '🌐 Cloud AI (Gemini) is responding...');
-            try {
-                const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-                const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                
-                // Enforce strictly alternating roles for Gemini SDK
-                const history = [];
-                let expectedRole = 'user';
-                for (const m of messages.slice(0, -1)) {
-                    const mappedRole = m.role === 'assistant' ? 'model' : 'user';
-                    if (mappedRole === expectedRole) {
-                        history.push({ role: mappedRole, parts: [{ text: m.content }] });
-                        expectedRole = mappedRole === 'user' ? 'model' : 'user';
-                    } else if (history.length > 0) {
-                        history[history.length - 1].parts[0].text += `\n\n${m.content}`;
-                    }
-                }
-
-                const chat = geminiModel.startChat({ history });
-                const result = await chat.sendMessage(userQuestion);
-                finalResponseText = result.response.text();
-                modelUsed = 'gemini';
-            } catch (e) {
-                console.error('[Gemini Chat Error]', e.message);
-                geminiFailed = true;
-            }
+        // 1. Try Local First
+        broadcastStatus('generating', '🧠 Local AI is responding...');
+        try {
+            const fallbackModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
+            const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
+            
+            const { OLLAMA_URL } = await import('./config.js');
+            const llmRes = await fetch(`${OLLAMA_URL}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: fallbackModel,
+                    prompt: `You are Jarvis, a highly capable local AI system running offline. Answer the user directly.\n\n${formattedPrompt}`,
+                    stream: false
+                })
+            });
+            
+            if (!llmRes.ok) throw new Error("Local model returned an error");
+            const llmData = await llmRes.json();
+            finalResponseText = llmData.response || `Error: Empty response from ${fallbackModel}`;
+            modelUsed = fallbackModel;
+            markModelWarm(fallbackModel);
+        } catch (e) {
+            console.error('[Local Chat Error]', e.message);
+            localFailed = true;
         }
-        
-        if ((!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') || geminiFailed) {
-            broadcastStatus('generating', '🧠 Local AI is responding (Offline / Fallback Mode)...');
-            try {
-                const fallbackModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
-                const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
-                
-                const { OLLAMA_URL } = await import('./config.js');
-                const llmRes = await fetch(`${OLLAMA_URL}/api/generate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: fallbackModel,
-                        prompt: `You are Jarvis, a highly capable local AI system running offline. Answer the user directly.\n\n${formattedPrompt}`,
-                        stream: false
-                    })
-                });
-                const llmData = await llmRes.json();
-                finalResponseText = llmData.response || `Error: Empty response from ${fallbackModel}`;
-                modelUsed = fallbackModel;
-                markModelWarm(fallbackModel);
-            } catch (e) {
-                finalResponseText = `Failed to generate locally. Is Ollama running? Error: ${e.message}`;
+
+        // 2. Fall back to Cloud if Local Failed
+        if (localFailed) {
+            if (GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '') {
+                broadcastStatus('generating', '🌐 Local AI failed. Cloud AI (Gemini) is responding...');
+                try {
+                    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+                    const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                    
+                    const history = [];
+                    let expectedRole = 'user';
+                    for (const m of messages.slice(0, -1)) {
+                        const mappedRole = m.role === 'assistant' ? 'model' : 'user';
+                        if (mappedRole === expectedRole) {
+                            history.push({ role: mappedRole, parts: [{ text: m.content }] });
+                            expectedRole = mappedRole === 'user' ? 'model' : 'user';
+                        } else if (history.length > 0) {
+                            history[history.length - 1].parts[0].text += `\n\n${m.content}`;
+                        }
+                    }
+
+                    const chat = geminiModel.startChat({ history });
+                    const result = await chat.sendMessage(userQuestion);
+                    finalResponseText = result.response.text();
+                    modelUsed = 'gemini';
+                } catch (e) {
+                    finalResponseText = `Failed locally and Cloud fallback also failed: ${e.message}`;
+                    modelUsed = 'error';
+                }
+            } else {
+                finalResponseText = `Failed to generate locally. Is Ollama running? No Cloud API key available for fallback.`;
                 modelUsed = 'error';
             }
         }
