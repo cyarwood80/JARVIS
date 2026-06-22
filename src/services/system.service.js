@@ -26,63 +26,27 @@ export function startContextMonitors() {
 }
 
 export function startProactiveAgency(broadcastMsg) {
-    setInterval(async () => {
-        const script = `Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=(Get-Date).AddMinutes(-5)} -MaxEvents 2 -ErrorAction SilentlyContinue | Select-Object Message | ConvertTo-Json`;
-        
-        exec(`powershell -NoProfile -Command "${script}"`, async (error, stdout) => {
-            if (!error && stdout && stdout.trim().length > 5) {
-                try {
-                    const logs = JSON.parse(stdout);
-                    const logMsgs = Array.isArray(logs) ? logs.map(l => l.Message).join(' | ') : logs.Message;
-                    
-                    if (GEMINI_API_KEY) {
-                        const prompt = `You are JARVIS, an AI assistant running on a Windows PC. You proactively monitor the system. You just detected these critical application errors in the background:\n${logMsgs}\nWrite a short, conversational alert to the user warning them about this. Keep it under 2 sentences.`;
-                        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-                        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                        const result = await model.generateContent(prompt);
-                        const alertText = result.response.text();
-                        
-                        broadcastMsg({ type: 'PROACTIVE_MSG', data: alertText });
-                    }
-                } catch(e) {}
+    // Run all user-created scripts in the autonomous folder every 5 minutes natively
+    cron.schedule('*/5 * * * *', async () => {
+        const autoDir = path.join(process.cwd(), 'scripts', 'autonomous');
+        try {
+            await fs.access(autoDir);
+            const files = await fs.readdir(autoDir);
+            for (const file of files) {
+                if (file.endsWith('.ps1')) {
+                    exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${path.join(autoDir, file)}"`);
+                } else if (file.endsWith('.js')) {
+                    exec(`node "${path.join(autoDir, file)}"`);
+                }
             }
-        });
-
-        // Entra ID Security Monitor Check
-        const entraScriptPath = path.join(process.cwd(), 'scripts', 'check_entra_risk.ps1');
-        exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${entraScriptPath}"`, async (error, stdout) => {
-            if (!error && stdout && stdout.trim().length > 5) {
-                try {
-                    if (GEMINI_API_KEY) {
-                        const prompt = `You are JARVIS. You act as an autonomous cloud security monitor. You just detected these failed or risky sign-ins in your Entra ID environment:\n${stdout.trim()}\nWrite a short, urgent conversational alert to the user warning them about this activity. Include the IP and User. Keep it under 3 sentences.`;
-                        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-                        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                        const result = await model.generateContent(prompt);
-                        const alertText = result.response.text();
-                        
-                        broadcastMsg({ type: 'PROACTIVE_MSG', data: `🚨 [ENTRA SECURITY ALERT]\n${alertText}` });
-                    }
-                } catch(e) {}
-            }
-        });
-    }, 5 * 60 * 1000);
+        } catch (e) {
+            // Folder doesn't exist yet, which is fine
+        }
+    });
 }
 
 export function setupAutonomousSensors() {
-    cron.schedule('*/5 * * * *', async () => {
-        console.log('[HEARTBEAT] Triggering autonomous system check...');
-        const prompt = `[AUTONOMOUS HEARTBEAT] The current time is ${new Date().toLocaleTimeString()}. Review the system state, active window, and recent history. Do you need to proactively notify the user about anything (using whatsapp_push, voice_alert, or desktop_notify) or run any background tasks? If no action is needed, just say "No action needed."`;
-        
-        try {
-            await fetch(`http://localhost:${PORT}/v1/chat/completions`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
-            });
-        } catch (e) {
-            console.error('[HEARTBEAT] Failed to trigger:', e.message);
-        }
-    });
+    // LLM Autonomous heartbeat removed in favor of script-based monitoring
 
     const downloadsFolder = path.join(process.env.USERPROFILE || process.env.HOME, 'Downloads');
     fs.access(downloadsFolder).then(() => {

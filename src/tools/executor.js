@@ -68,6 +68,10 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
             filename += '.ps1';
         }
         const scriptPath = path.join(scriptsDir, filename);
+        
+        const targetDir = path.dirname(scriptPath);
+        if (!(await fileExists(targetDir))) await fs.mkdir(targetDir, { recursive: true });
+        
         await fs.writeFile(scriptPath, args.code, 'utf8');
         
         const metaPath = path.join(scriptsDir, 'meta.json');

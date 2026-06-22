@@ -18,7 +18,7 @@ Available tools:
   - open_application(appName): Launch a Windows application
   - get_pc_diagnostics(): Get current CPU, RAM, and Disk usage percentages
   - manage_memory(action, fact): "action" can be "append", "read", "search", "clear".
-  - save_script(scriptName, description, code): Save a reusable script.
+  - save_script(scriptName, description, code): Save a reusable script. If you save it to the "autonomous" subfolder (e.g. scriptName: "autonomous/check_cpu.ps1"), it will automatically execute in the background every 5 minutes forever. Use this to create efficient local system monitors instead of relying on the LLM.
   - run_saved_script(scriptName, args): Run a saved script.
   - list_scripts(): List saved scripts.
   - search_web(query): Search the live internet.
