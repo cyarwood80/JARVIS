@@ -196,30 +196,9 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
     if (usedGeminiDirectly || !finalResponseText) {
-        if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') {
-            broadcastStatus('generating', '🧠 Local AI is responding (Offline Mode)...');
-            try {
-                const fallbackModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
-                const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
-                
-                const llmRes = await fetch(`${OLLAMA_URL}/api/generate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: fallbackModel,
-                        prompt: `You are Jarvis, a highly capable local AI system running offline. Answer the user directly.\n\n${formattedPrompt}`,
-                        stream: false
-                    })
-                });
-                const llmData = await llmRes.json();
-                finalResponseText = llmData.response || `Error: Empty response from ${fallbackModel}`;
-                modelUsed = fallbackModel;
-                markModelWarm(fallbackModel);
-            } catch (e) {
-                finalResponseText = `Failed to generate locally. Is Ollama running? Error: ${e.message}`;
-                modelUsed = 'error';
-            }
-        } else {
+        let geminiFailed = false;
+        
+        if (GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '') {
             broadcastStatus('generating', '🌐 Gemini is responding...');
             try {
                 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -243,7 +222,33 @@ app.post('/v1/chat/completions', async (req, res) => {
                 finalResponseText = result.response.text();
                 modelUsed = 'gemini';
             } catch (e) {
-                finalResponseText = `Failed: ${e.message}`;
+                console.error('[Gemini Chat Error]', e.message);
+                geminiFailed = true;
+            }
+        }
+        
+        if ((!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') || geminiFailed) {
+            broadcastStatus('generating', '🧠 Local AI is responding (Offline / Fallback Mode)...');
+            try {
+                const fallbackModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
+                const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
+                
+                const { OLLAMA_URL } = await import('./config.js');
+                const llmRes = await fetch(`${OLLAMA_URL}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: fallbackModel,
+                        prompt: `You are Jarvis, a highly capable local AI system running offline. Answer the user directly.\n\n${formattedPrompt}`,
+                        stream: false
+                    })
+                });
+                const llmData = await llmRes.json();
+                finalResponseText = llmData.response || `Error: Empty response from ${fallbackModel}`;
+                modelUsed = fallbackModel;
+                markModelWarm(fallbackModel);
+            } catch (e) {
+                finalResponseText = `Failed to generate locally. Is Ollama running? Error: ${e.message}`;
                 modelUsed = 'error';
             }
         }

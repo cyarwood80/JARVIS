@@ -61,9 +61,17 @@ export async function refreshModels() {
 // Auto-refresh models every 15 seconds so JARVIS detects models finishing downloads in the background
 setInterval(refreshModels, 15000);
 
-function isRateLimitError(err) {
-    const msg = err?.message || '';
-    return msg.includes('429') || msg.includes('quota') || msg.includes('Too Many Requests');
+function shouldFallbackToLocal(err) {
+    const msg = (err?.message || '').toLowerCase();
+    return msg.includes('429') || 
+           msg.includes('quota') || 
+           msg.includes('too many') || 
+           msg.includes('503') || 
+           msg.includes('500') || 
+           msg.includes('fetch') || 
+           msg.includes('network') || 
+           msg.includes('timeout') ||
+           msg.includes('api key');
 }
 
 export async function runLocalModel(modelName, messages, tools = null) {
@@ -131,7 +139,7 @@ export async function geminiPlan(messages, broadcastLog) {
         const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
         return JSON.parse(cleaned);
     } catch (e) {
-        if (isRateLimitError(e)) return await localFallbackPlan(messages, broadcastLog);
+        if (shouldFallbackToLocal(e)) return await localFallbackPlan(messages, broadcastLog);
         throw e;
     }
 }
@@ -150,8 +158,8 @@ export async function geminiSynthesise(messages, toolName, toolArgs, toolOutput,
         if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
         return result.response.text().trim();
     } catch (e) {
-        if (isRateLimitError(e)) {
-            broadcastLog('[Synthesiser] Quota hit — using local fallback');
+        if (shouldFallbackToLocal(e)) {
+            broadcastLog('[Synthesiser] API unavailable — using local fallback');
             return await localSynthesise(messages, toolOutput);
         }
         throw e;
