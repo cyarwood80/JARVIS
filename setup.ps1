@@ -125,6 +125,19 @@ if (!(Test-Path ".env")) {
     Write-Host ".env file already exists, skipping." -ForegroundColor DarkGray
 }
 
+# 8. OpenClaw Authentication
+Write-Host "`n[8/8] WhatsApp Gateway Setup..." -ForegroundColor Yellow
+if (Test-Path "openclaw\package.json") {
+    if (!(Test-Path "openclaw\.wwebjs_auth")) {
+        Write-Host "WhatsApp authentication required. Generating QR Code..." -ForegroundColor Cyan
+        Push-Location openclaw
+        node index.js --setup
+        Pop-Location
+    } else {
+        Write-Host "WhatsApp already authenticated." -ForegroundColor DarkGray
+    }
+}
+
 Write-Host "`n=========================================" -ForegroundColor Cyan
 Write-Host "     Setup Complete!                     " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan

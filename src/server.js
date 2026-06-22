@@ -22,12 +22,15 @@ const server = app.listen(PORT, async () => {
     console.log(`\n🚀 Jarvis AI Hub running on http://localhost:${PORT}`);
     await refreshModels();
     
-    // Launch OpenClaw Gateway in a new visible terminal window so user can scan QR code
+    // Auto-start OpenClaw silently in background
     const openClawDir = path.join(ROOT_DIR, 'openclaw');
     try {
         await fs.access(openClawDir);
-        console.log(`   Starting OpenClaw Gateway in a new window...`);
-        exec(`start cmd /k "title OpenClaw Gateway && node index.js"`, { cwd: openClawDir });
+        console.log(`   Starting OpenClaw Gateway silently in background...`);
+        openClawProcess = spawn('node', ['index.js'], { cwd: openClawDir });
+        openClawProcess.stdout.on('data', d => broadcastLog(d.toString()));
+        openClawProcess.stderr.on('data', d => broadcastLog(`[ERROR] ${d.toString()}`));
+        openClawProcess.on('close', c => { openClawProcess = null; });
     } catch {}
 
     // Launch in Windowed App Mode (No URL bar)

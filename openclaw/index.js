@@ -6,10 +6,17 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 
+let browserExecutablePath;
+try {
+    browserExecutablePath = require('puppeteer').executablePath();
+} catch (e) {
+    browserExecutablePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+}
+
 console.log("-----------------------------------------");
 console.log("  OpenClaw Gateway v2.0.0 (Traffic Master)");
 console.log("-----------------------------------------");
-console.log("Initializing WhatsApp Puppeteer engine...");
+console.log(`Initializing WhatsApp Puppeteer engine using: ${browserExecutablePath}`);
 
 // Store conversation history and session state per user
 const chatHistories = new Map();
@@ -38,6 +45,7 @@ try {
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
+        executablePath: browserExecutablePath,
         headless: true,
         args: [
             '--no-sandbox',
@@ -57,6 +65,10 @@ client.on('qr', (qr) => {
 
 client.on('ready', () => {
     console.log('\n[SUCCESS] ✅ OpenClaw linked to WhatsApp!');
+    if (process.argv.includes('--setup')) {
+        console.log('Initial setup complete! Exiting setup mode...');
+        process.exit(0);
+    }
     console.log('Listening for messages with wake word "jarvis"...');
 });
 
