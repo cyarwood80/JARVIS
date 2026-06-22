@@ -22,15 +22,12 @@ const server = app.listen(PORT, async () => {
     console.log(`\n🚀 Jarvis AI Hub running on http://localhost:${PORT}`);
     await refreshModels();
     
-    // Auto-start OpenClaw
+    // Launch OpenClaw Gateway in a new visible terminal window so user can scan QR code
     const openClawDir = path.join(ROOT_DIR, 'openclaw');
     try {
         await fs.access(openClawDir);
-        console.log(`   Starting OpenClaw Gateway...`);
-        openClawProcess = spawn('node', ['index.js'], { cwd: openClawDir });
-        openClawProcess.stdout.on('data', d => broadcastLog(d.toString()));
-        openClawProcess.stderr.on('data', d => broadcastLog(`[ERROR] ${d.toString()}`));
-        openClawProcess.on('close', c => { openClawProcess = null; });
+        console.log(`   Starting OpenClaw Gateway in a new window...`);
+        exec(`start cmd /k "title OpenClaw Gateway && node index.js"`, { cwd: openClawDir });
     } catch {}
 
     // Launch in Windowed App Mode (No URL bar)
@@ -88,14 +85,24 @@ app.get('/api/stats', async (req, res) => {
 
 app.get('/api/warmth', (req, res) => {
     const status = {};
-    for (const [model, lastUsed] of Object.entries(modelWarmth)) {
+    for (const model of Object.keys(MODEL_REGISTRY)) {
+        const lastUsed = modelWarmth[model] || 0;
         status[model] = {
             warm: lastUsed > 0 && (Date.now() - lastUsed) < COLD_THRESHOLD_MS,
             lastUsed: lastUsed > 0 ? new Date(lastUsed).toISOString() : null,
-            info: MODEL_REGISTRY[model] || { specialisms: '', size: '? GB' }
+            info: MODEL_REGISTRY[model]
         };
     }
     res.json(status);
+});
+
+app.post('/api/plan', async (req, res) => {
+    try {
+        const plan = await geminiPlan(req.body.messages || [], broadcastLog);
+        res.json({ plan });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.get('/api/scripts', async (req, res) => {

@@ -137,10 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
         chatHistory.scrollTop = chatHistory.scrollHeight;
 
         try {
-            const res = await fetch('/api/chat', {
+            const res = await fetch('/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: promptText })
+                body: JSON.stringify({ messages: [{ role: 'user', content: promptText }] })
             });
 
             const data = await res.json();
@@ -148,19 +148,24 @@ document.addEventListener('DOMContentLoaded', () => {
             // Replace thinking bubble with actual response
             thinkingDiv.remove();
 
-            if (!res.ok) {
+            if (!res.ok || data.error) {
                 appendMessage(`[Error] ${data.error || 'Request failed'}`, 'jarvis');
                 return;
             }
 
-            appendMessage(data.response, 'jarvis', { modelChain: data.modelName });
+            // Extract from OpenAI format
+            const finalResponse = data.choices[0].message.content;
+            const routeModel = data.model;
+            const source = routeModel.includes('gemini') ? 'gemini' : 'local';
+
+            appendMessage(finalResponse, 'jarvis', { modelChain: routeModel });
 
             // Update model indicator
             const modelIndicator = document.getElementById('model-indicator');
             const modelNameSpan = document.getElementById('model-name');
             modelIndicator.classList.remove('hidden', 'gemini', 'local');
-            modelIndicator.classList.add(data.source);
-            modelNameSpan.textContent = `Route: ${data.modelName}`;
+            modelIndicator.classList.add(source);
+            modelNameSpan.textContent = `Route: ${routeModel}`;
 
             // Show plan badge in console if plan is available
             if (data.plan) {
