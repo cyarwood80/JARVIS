@@ -6,8 +6,20 @@ Write-Host "=========================================" -ForegroundColor Cyan
 # 1. Node.js check
 Write-Host "`n[1/5] Checking Node.js & NPM..." -ForegroundColor Yellow
 if (!(Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "Node.js is not installed. Please install Node.js (https://nodejs.org) and try again." -ForegroundColor Red
-    exit 1
+    Write-Host "Node.js is not installed. Attempting to install automatically via Winget..." -ForegroundColor Cyan
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install OpenJS.NodeJS -e --silent --accept-package-agreements --accept-source-agreements
+        # Refresh environment variables to pick up Node
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        
+        if (!(Get-Command node -ErrorAction SilentlyContinue)) {
+            Write-Host "Node.js installed but not found in PATH. Please restart your terminal and run setup.ps1 again." -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host "Winget is not available on this system. Please manually install Node.js from https://nodejs.org and try again." -ForegroundColor Red
+        exit 1
+    }
 }
 Write-Host "Node.js found." -ForegroundColor Green
 
@@ -24,8 +36,19 @@ if (Test-Path "openclaw\package.json") {
 # 2. Ollama check
 Write-Host "`n[2/5] Checking Ollama..." -ForegroundColor Yellow
 if (!(Get-Command ollama -ErrorAction SilentlyContinue)) {
-    Write-Host "Ollama is not installed. Please install Ollama (https://ollama.com) and try again." -ForegroundColor Red
-    exit 1
+    Write-Host "Ollama is not installed. Attempting to install automatically..." -ForegroundColor Cyan
+    Write-Host "Downloading Ollama setup..." -ForegroundColor DarkGray
+    Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "$env:TEMP\OllamaSetup.exe"
+    Write-Host "Running Ollama installer..." -ForegroundColor DarkGray
+    Start-Process -FilePath "$env:TEMP\OllamaSetup.exe" -ArgumentList "/S" -Wait
+    
+    # Refresh environment variables to pick up Ollama
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    
+    if (!(Get-Command ollama -ErrorAction SilentlyContinue)) {
+        Write-Host "Ollama installed but not found in PATH. Please restart your terminal and run setup.ps1 again." -ForegroundColor Red
+        exit 1
+    }
 }
 Write-Host "Ollama found." -ForegroundColor Green
 
