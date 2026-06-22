@@ -49,9 +49,17 @@ export async function refreshModels() {
         }
         setModelRegistry(newRegistry);
     } catch (e) {
-        console.error('[OLLAMA] Failed to fetch models:', e.message);
+        console.error('[OLLAMA] Failed to connect to Ollama. Attempting to start the service...');
+        import('child_process').then(({ exec }) => {
+            exec('ollama serve', (err) => {
+                // Ignore errors as it usually means it's already running but warming up
+            });
+        });
     }
 }
+
+// Auto-refresh models every 15 seconds so JARVIS detects models finishing downloads in the background
+setInterval(refreshModels, 15000);
 
 function isRateLimitError(err) {
     const msg = err?.message || '';

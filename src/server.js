@@ -33,7 +33,14 @@ const server = app.listen(PORT, async () => {
         openClawProcess.on('close', c => { openClawProcess = null; });
     } catch {}
 
-    exec(`start http://localhost:${PORT}`);
+    // Launch in Windowed App Mode (No URL bar)
+    exec(`start msedge --app=http://localhost:${PORT}`, (err) => {
+        if (err) {
+            exec(`start chrome --app=http://localhost:${PORT}`, (err2) => {
+                if (err2) exec(`start http://localhost:${PORT}`); // fallback
+            });
+        }
+    });
     
     startContextMonitors();
     startProactiveAgency(msg => broadcastMsg(msg));
