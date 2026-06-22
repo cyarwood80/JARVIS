@@ -130,7 +130,9 @@ app.post('/v1/chat/completions', async (req, res) => {
     const userQuestion = messages[messages.length - 1]?.content || "";
     
     console.log(`\n[PROXY] Received: "${userQuestion}"`);
-    broadcastStatus('thinking', '⚡ Request received — Gemini is planning...');
+    
+    const isCloudEnabled = GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '';
+    broadcastStatus('thinking', isCloudEnabled ? '⚡ Request received — Cloud AI (Gemini) is planning...' : '⚡ Request received — Local AI is planning...');
 
     let plan, modelUsed = "gemini", toolWasUsed = false, toolName = null, toolArgs = {}, toolOutput = "";
     let retryCount = 0, errorFeedback = "", usedGeminiDirectly = false, finalResponseText = "";
@@ -186,7 +188,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
     if (toolWasUsed && toolOutput) {
-        broadcastStatus('synthesising', '✨ Gemini synthesising...');
+        broadcastStatus('synthesising', isCloudEnabled ? '✨ Cloud AI (Gemini) synthesising...' : '✨ Local AI synthesising...');
         try {
             finalResponseText = await geminiSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog);
             modelUsed += '+gemini';
@@ -199,7 +201,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         let geminiFailed = false;
         
         if (GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '') {
-            broadcastStatus('generating', '🌐 Gemini is responding...');
+            broadcastStatus('generating', '🌐 Cloud AI (Gemini) is responding...');
             try {
                 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
                 const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
