@@ -47,6 +47,24 @@ export function startProactiveAgency(broadcastMsg) {
                 } catch(e) {}
             }
         });
+
+        // Entra ID Security Monitor Check
+        const entraScriptPath = path.join(process.cwd(), 'scripts', 'check_entra_risk.ps1');
+        exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${entraScriptPath}"`, async (error, stdout) => {
+            if (!error && stdout && stdout.trim().length > 5) {
+                try {
+                    if (GEMINI_API_KEY) {
+                        const prompt = `You are JARVIS. You act as an autonomous cloud security monitor. You just detected these failed or risky sign-ins in your Entra ID environment:\n${stdout.trim()}\nWrite a short, urgent conversational alert to the user warning them about this activity. Include the IP and User. Keep it under 3 sentences.`;
+                        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+                        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                        const result = await model.generateContent(prompt);
+                        const alertText = result.response.text();
+                        
+                        broadcastMsg({ type: 'PROACTIVE_MSG', data: `🚨 [ENTRA SECURITY ALERT]\n${alertText}` });
+                    }
+                } catch(e) {}
+            }
+        });
     }, 5 * 60 * 1000);
 }
 
