@@ -1,0 +1,159 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GEMINI_API_KEY, OLLAMA_URL, METRICS, MODEL_REGISTRY, setModelRegistry, markModelWarm } from '../config.js';
+import { activeWindowContext, clipboardContext } from './system.service.js';
+import { getCoreMemory } from './memory.service.js';
+
+const KNOWN_CAPABILITIES = {
+    'hermes3': { specialisms: 'OS commands, system queries, user/session info, event logs, file operations, network info', toolCalling: 'reliable' },
+    'qwen2.5': { specialisms: 'Code generation, scripts, debugging, programming tasks, data transformation', toolCalling: 'very reliable' },
+    'gemma4': { specialisms: 'Complex multi-step reasoning, data analysis, long-form content, research tasks', toolCalling: 'native best' },
+    'llama3.1': { specialisms: 'Simple factual Q&A, general conversation, quick answers with no tool required', toolCalling: 'limited' },
+    'llama3': { specialisms: 'Summarisation, condensing long tool outputs, instruction following', toolCalling: 'limited' }
+};
+
+const PLANNER_SYSTEM_PROMPT = `You are JARVIS's planning brain running on a Windows 11 PC. Your ONLY job is to analyse the user's intent and output a precise JSON execution plan.
+
+Available tools:
+  - execute_command(command): Run any PowerShell command on the user's Windows PC
+  - open_application(appName): Launch a Windows application
+  - get_pc_diagnostics(): Get current CPU, RAM, and Disk usage percentages
+  - manage_memory(action, fact): "action" can be "append", "read", "search", "clear".
+  - save_script(scriptName, description, code): Save a reusable script.
+  - run_saved_script(scriptName, args): Run a saved script.
+  - list_scripts(): List saved scripts.
+  - search_web(query): Search the live internet.
+  - whatsapp_push(message): Send WhatsApp message.
+  - voice_alert(message): Speak a text string.
+  - desktop_notify(title, message): Pop up a Windows notification.
+
+Output format (strict JSON, nothing else):
+{"intent": "<concise description>", "needs_tool": true|false, "tool": "<tool_name or null>", "args": {<tool args or empty object>}, "local_model": "<model_name>"}`;
+
+export async function refreshModels() {
+    try {
+        const res = await fetch(`${OLLAMA_URL}/api/tags`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const newRegistry = {};
+        for (const model of data.models) {
+            const name = model.name;
+            const sizeGB = (model.size / 1e9).toFixed(1) + 'GB';
+            let matchedCaps = { specialisms: 'General purpose tasks', toolCalling: 'unknown' };
+            for (const [key, caps] of Object.entries(KNOWN_CAPABILITIES)) {
+                if (name.toLowerCase().includes(key)) {
+                    matchedCaps = caps;
+                    break;
+                }
+            }
+            newRegistry[name] = { ...matchedCaps, size: sizeGB };
+        }
+        setModelRegistry(newRegistry);
+    } catch (e) {
+        console.error('[OLLAMA] Failed to fetch models:', e.message);
+    }
+}
+
+function isRateLimitError(err) {
+    const msg = err?.message || '';
+    return msg.includes('429') || msg.includes('quota') || msg.includes('Too Many Requests');
+}
+
+export async function runLocalModel(modelName, messages, tools = null) {
+    const coreMemory = await getCoreMemory();
+    const currentTime = `\nThe current system date and time is: ${new Date().toLocaleString()}.\n`;
+    const envContext = `The user's currently active window is: ${activeWindowContext}\nThe user's clipboard contains: "${clipboardContext}"\n`;
+    const systemPrompt = tools
+        ? `You are JARVIS... You MUST call the tool immediately. Execute the tool now.` + currentTime + envContext + coreMemory
+        : `You are JARVIS... Answer concisely.` + currentTime + envContext + coreMemory;
+
+    const ollamaMessages = [{ role: "system", content: systemPrompt }, ...messages];
+    const body = { model: modelName, messages: ollamaMessages, stream: false };
+    if (tools) body.tools = tools;
+
+    const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    if (!res.ok) throw new Error(`Ollama returned status ${res.status}`);
+    const data = await res.json();
+    
+    if (data.eval_count) {
+        METRICS.totalTokensLocal += data.eval_count;
+        if (!METRICS.models[modelName]) METRICS.models[modelName] = { runs: 0, tokens: 0 };
+        METRICS.models[modelName].runs++;
+        METRICS.models[modelName].tokens += data.eval_count;
+    }
+    return data;
+}
+
+export async function localFallbackPlan(messages, broadcastLog) {
+    const latestPrompt = messages[messages.length - 1]?.content || "";
+    broadcastLog('[Local Planner] Gemini quota hit — falling back to local planner');
+
+    const coreMemory = await getCoreMemory();
+    const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
+    const localPlanPrompt = PLANNER_SYSTEM_PROMPT + envContext + coreMemory + `\n\nUser message: "${latestPrompt}"\n\nOutput JSON:`;
+    
+    const localData = await runLocalModel('gemma4:26b', [{ role: 'user', content: localPlanPrompt }]);
+    const cleaned = (localData.message?.content || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No valid JSON');
+
+    return JSON.parse(jsonMatch[0]);
+}
+
+export async function geminiPlan(messages, broadcastLog) {
+    if (!GEMINI_API_KEY) throw new Error('No Gemini API key');
+    
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    
+    const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const coreMemory = await getCoreMemory();
+    const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
+    const plannerPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
+
+    try {
+        const result = await model.generateContent(plannerPrompt);
+        if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
+        
+        const raw = result.response.text().trim();
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        return JSON.parse(cleaned);
+    } catch (e) {
+        if (isRateLimitError(e)) return await localFallbackPlan(messages, broadcastLog);
+        throw e;
+    }
+}
+
+export async function geminiSynthesise(userQuestion, toolName, toolArgs, toolOutput, broadcastLog) {
+    if (!GEMINI_API_KEY) return await localSynthesise(userQuestion, toolOutput);
+
+    const prompt = `User asked: "${userQuestion}"\nTool ran: ${toolName}(${JSON.stringify(toolArgs)})\nRaw output:\n${toolOutput}\nWrite a clear response.`;
+    
+    try {
+        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const result = await model.generateContent(prompt);
+        if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
+        return result.response.text().trim();
+    } catch (e) {
+        if (isRateLimitError(e)) {
+            broadcastLog('[Synthesiser] Quota hit — using local fallback');
+            return await localSynthesise(userQuestion, toolOutput);
+        }
+        throw e;
+    }
+}
+
+export async function localSynthesise(userQuestion, toolOutput) {
+    const prompt = `User asked: "${userQuestion}"\nRaw output:\n${toolOutput}\nWrite a natural language response.`;
+    try {
+        const data = await runLocalModel('llama3:8b-instruct-q8_0', [{ role: 'user', content: prompt }]);
+        return data.message?.content || `Output:\n${toolOutput}`;
+    } catch {
+        return `Output:\n${toolOutput}`;
+    }
+}

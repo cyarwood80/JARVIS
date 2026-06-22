@@ -5,8 +5,9 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node --no-deprecation server.js",
-    "dev": "node --no-deprecation server.js"
+    "start": "node --no-deprecation src/server.js",
+    "dev": "node --no-deprecation src/server.js",
+    "setup": "powershell -ExecutionPolicy Bypass -File setup.ps1"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
