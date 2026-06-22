@@ -1,0 +1,25 @@
+{
+  "name": "jarvis-ai",
+  "version": "1.0.0",
+  "description": "Local Jarvis AI Hub with Hermes/Ollama and Gemini fallback",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node --no-deprecation server.js",
+    "dev": "node --no-deprecation server.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "active-win": "^8.2.1",
+    "chokidar": "^5.0.0",
+    "clipboardy": "^5.3.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "duck-duck-scrape": "^2.2.7",
+    "express": "^4.19.2",
+    "node-cron": "^4.4.1",
+    "node-notifier": "^10.0.1",
+    "systeminformation": "^5.22.8",
+    "ws": "^8.17.0"
+  }
+}
