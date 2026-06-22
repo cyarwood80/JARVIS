@@ -193,18 +193,43 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
     if (usedGeminiDirectly || !finalResponseText) {
-        broadcastStatus('generating', '🌐 Gemini is responding...');
-        try {
-            const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-            const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const history = messages.slice(0, -1).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-            const chat = geminiModel.startChat({ history });
-            const result = await chat.sendMessage(userQuestion);
-            finalResponseText = result.response.text();
-            modelUsed = 'gemini';
-        } catch (e) {
-            finalResponseText = `Failed: ${e.message}`;
-            modelUsed = 'error';
+        if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') {
+            broadcastStatus('generating', '🧠 Local AI is responding (Offline Mode)...');
+            try {
+                const fallbackModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
+                const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
+                
+                const llmRes = await fetch(`${OLLAMA_URL}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: fallbackModel,
+                        prompt: `You are Jarvis, a highly capable local AI system running offline. Answer the user directly.\n\n${formattedPrompt}`,
+                        stream: false
+                    })
+                });
+                const llmData = await llmRes.json();
+                finalResponseText = llmData.response || `Error: Empty response from ${fallbackModel}`;
+                modelUsed = fallbackModel;
+                markModelWarm(fallbackModel);
+            } catch (e) {
+                finalResponseText = `Failed to generate locally. Is Ollama running? Error: ${e.message}`;
+                modelUsed = 'error';
+            }
+        } else {
+            broadcastStatus('generating', '🌐 Gemini is responding...');
+            try {
+                const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+                const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                const history = messages.slice(0, -1).map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+                const chat = geminiModel.startChat({ history });
+                const result = await chat.sendMessage(userQuestion);
+                finalResponseText = result.response.text();
+                modelUsed = 'gemini';
+            } catch (e) {
+                finalResponseText = `Failed: ${e.message}`;
+                modelUsed = 'error';
+            }
         }
     }
 
