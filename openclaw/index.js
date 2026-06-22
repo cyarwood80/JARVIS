@@ -3,12 +3,18 @@ const qrcode = require('qrcode-terminal');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 
 let browserExecutablePath;
 try {
-    browserExecutablePath = require('puppeteer').executablePath();
+    const puppeteerPath = require('puppeteer').executablePath();
+    if (fs.existsSync(puppeteerPath)) {
+        browserExecutablePath = puppeteerPath;
+    } else {
+        console.log(`[WARNING] Chrome missing at ${puppeteerPath}. Falling back to MS Edge...`);
+        browserExecutablePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+    }
 } catch (e) {
     browserExecutablePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 }
