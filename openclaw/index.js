@@ -14,9 +14,15 @@ try {
     } else {
         console.log(`[WARNING] Chrome missing at ${puppeteerPath}. Falling back to MS Edge...`);
         browserExecutablePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+        if (!fs.existsSync(browserExecutablePath)) {
+            browserExecutablePath = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
+        }
     }
 } catch (e) {
     browserExecutablePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+    if (!fs.existsSync(browserExecutablePath)) {
+        browserExecutablePath = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
+    }
 }
 
 console.log("-----------------------------------------");
