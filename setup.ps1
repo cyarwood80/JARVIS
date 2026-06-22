@@ -74,10 +74,12 @@ foreach ($model in $models) {
 }
 
 # 4. OpenClaw Gateway dependencies
-Write-Host "`n[4/5] Installing OpenClaw dependencies..." -ForegroundColor Yellow
+Write-Host "`n[4/7] Installing OpenClaw dependencies..." -ForegroundColor Yellow
 if (Test-Path "openclaw\package.json") {
     Push-Location openclaw
+    $env:PUPPETEER_SKIP_DOWNLOAD = "true"
     npm install
+    $env:PUPPETEER_SKIP_DOWNLOAD = $null
     Write-Host "Fetching Chromium for OpenClaw (Puppeteer)..." -ForegroundColor DarkGray
     npx puppeteer browsers install chrome
     Pop-Location
@@ -86,13 +88,15 @@ if (Test-Path "openclaw\package.json") {
 }
 
 # 5. Main JARVIS dependencies
-Write-Host "`n[5/5] Installing JARVIS dependencies..." -ForegroundColor Yellow
+Write-Host "`n[5/7] Installing JARVIS dependencies..." -ForegroundColor Yellow
+$env:PUPPETEER_SKIP_DOWNLOAD = "true"
 npm install
+$env:PUPPETEER_SKIP_DOWNLOAD = $null
 Write-Host "Fetching Chromium for JARVIS built-in browser..." -ForegroundColor DarkGray
 npx puppeteer browsers install chrome
 
 # 6. Piper TTS Setup
-Write-Host "`n[6/6] Setting up Piper TTS..." -ForegroundColor Yellow
+Write-Host "`n[6/7] Setting up Piper TTS..." -ForegroundColor Yellow
 if (Test-Path "download-piper.ps1") {
     Write-Host "Executing Piper download script..."
     powershell.exe -ExecutionPolicy Bypass -File "download-piper.ps1"
@@ -103,10 +107,19 @@ if (Test-Path "download-piper.ps1") {
 # 7. Environment Config
 Write-Host "`n[7/7] Configuring Environment Variables..." -ForegroundColor Yellow
 if (!(Test-Path ".env")) {
-    $apiKey = Read-Host "Please enter your Gemini API Key (leave blank to skip)"
+    Write-Host "JARVIS runs best with the Gemini Flash model (which is 100% free)." -ForegroundColor Cyan
+    $openBrowser = Read-Host "Do you want to open your browser to aistudio.google.com to get your free key now? (Y/N) [Default: Y]"
+    if ([string]::IsNullOrWhiteSpace($openBrowser) -or $openBrowser.ToLower().StartsWith("y")) {
+        Start-Process "https://aistudio.google.com/app/apikey"
+    }
+
+    $apiKey = Read-Host "Please paste your Gemini API Key (or leave blank to use Offline Local Mode only)"
     if (![string]::IsNullOrWhiteSpace($apiKey)) {
         Set-Content -Path ".env" -Value "GEMINI_API_KEY=$apiKey`nPORT=3000`nOLLAMA_URL=http://127.0.0.1:11434"
         Write-Host ".env file created successfully." -ForegroundColor Green
+    } else {
+        Set-Content -Path ".env" -Value "GEMINI_API_KEY=`nPORT=3000`nOLLAMA_URL=http://127.0.0.1:11434"
+        Write-Host "No key provided. JARVIS will run in Offline Local Mode." -ForegroundColor DarkGray
     }
 } else {
     Write-Host ".env file already exists, skipping." -ForegroundColor DarkGray
