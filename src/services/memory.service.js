@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_API_KEY, ROOT_DIR } from '../config.js';
+import { ROOT_DIR, OLLAMA_URL, MODEL_REGISTRY } from '../config.js';
 import { searchRagMemory, addRagMemory } from './rag.service.js';
 
 export let lastInteractionTime = Date.now();
@@ -24,28 +23,47 @@ export function startSleepCycle() {
     setInterval(async () => {
         const idleTime = Date.now() - lastInteractionTime;
         
-        if (idleTime > 10 * 60 * 1000 && !hasConsolidatedMemoryToday && GEMINI_API_KEY) {
+        // Wait 10 minutes of idle time. No Cloud API key required!
+        if (idleTime > 10 * 60 * 1000 && !hasConsolidatedMemoryToday) {
             const memPath = path.join(ROOT_DIR, 'vault', 'chris.md');
             if (await fileExists(memPath)) {
                 try {
-                    console.log("[SLEEP CYCLE] System idle. Initiating memory consolidation...");
+                    console.log("[SLEEP CYCLE] System idle. Initiating local memory consolidation...");
                     const rawMemory = await fs.readFile(memPath, 'utf8');
-                    if (!rawMemory.trim()) return;
+                    if (!rawMemory.trim() || rawMemory.length < 100) return; // Don't consolidate tiny memories
 
                     const prompt = `You are JARVIS's background memory manager. Consolidate the following raw memory vault. 
 Merge overlapping facts, delete duplicate lines, correct any conflicting information, and rewrite it as a beautifully clean, categorized Markdown Knowledge Graph. 
 Do not add conversational text, just output the pure Markdown.
-\n\nRAW MEMORY:\n${rawMemory}`;
+\n\nRAW MEMORY:\n${rawMemory}\n\nCONSOLIDATED MARKDOWN:`;
 
-                    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-                    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                    const result = await model.generateContent(prompt);
+                    // Find a reasoning model locally, fallback to anything
+                    let bestModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
+                    for (const name of Object.keys(MODEL_REGISTRY)) {
+                        if (name.includes('gemma4') || name.includes('qwen2.5')) bestModel = name;
+                    }
+
+                    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: bestModel,
+                            prompt: prompt,
+                            stream: false,
+                            keep_alive: '2h'
+                        })
+                    });
                     
-                    let cleanedMemory = result.response.text().trim();
+                    if (!res.ok) throw new Error("Local model failed to consolidate.");
+                    const data = await res.json();
+                    
+                    let cleanedMemory = data.response?.trim();
+                    if (!cleanedMemory) throw new Error("Empty response");
+                    
                     cleanedMemory = cleanedMemory.replace(/^```(?:markdown)?\s*/i, '').replace(/\s*```$/, '').trim();
                     
                     await fs.writeFile(memPath, cleanedMemory, 'utf8');
-                    console.log("[SLEEP CYCLE] Memory consolidation complete.");
+                    console.log(`[SLEEP CYCLE] Local memory consolidation complete using ${bestModel}.`);
                     
                     hasConsolidatedMemoryToday = true;
                     setTimeout(() => hasConsolidatedMemoryToday = false, 12 * 60 * 60 * 1000); // Reset after 12 hours
