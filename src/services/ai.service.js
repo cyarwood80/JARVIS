@@ -4,11 +4,11 @@ import { activeWindowContext, clipboardContext } from './system.service.js';
 import { getCoreMemory } from './memory.service.js';
 
 const KNOWN_CAPABILITIES = {
-    'hermes3': { specialisms: 'OS commands, system queries, user/session info, event logs, file operations, network info', toolCalling: 'reliable' },
-    'qwen2.5': { specialisms: 'Code generation, scripts, debugging, programming tasks, data transformation', toolCalling: 'very reliable' },
-    'gemma4': { specialisms: 'Complex multi-step reasoning, data analysis, long-form content, research tasks', toolCalling: 'native best' },
-    'llama3.1': { specialisms: 'Simple factual Q&A, general conversation, quick answers with no tool required', toolCalling: 'limited' },
-    'llama3': { specialisms: 'Summarisation, condensing long tool outputs, instruction following', toolCalling: 'limited' }
+    'hermes3': { domain: 'general', specialisms: 'OS commands, system queries, user/session info, event logs, file operations, network info', toolCalling: 'reliable' },
+    'qwen2.5': { domain: 'coding', specialisms: 'Code generation, scripts, debugging, programming tasks, data transformation', toolCalling: 'very reliable' },
+    'gemma4': { domain: 'reasoning', specialisms: 'Complex multi-step reasoning, data analysis, long-form content, research tasks', toolCalling: 'native best' },
+    'llama3.1': { domain: 'general', specialisms: 'Simple factual Q&A, general conversation, quick answers with no tool required', toolCalling: 'limited' },
+    'llama3': { domain: 'general', specialisms: 'Summarisation, condensing long tool outputs, instruction following', toolCalling: 'limited' }
 };
 
 const PLANNER_SYSTEM_PROMPT = `You are JARVIS's planning brain running on a Windows 11 PC. Your ONLY job is to analyse the user's intent and output a precise JSON execution plan.
@@ -38,7 +38,7 @@ export async function refreshModels() {
         for (const model of data.models) {
             const name = model.name;
             const sizeGB = (model.size / 1e9).toFixed(1) + 'GB';
-            let matchedCaps = { specialisms: 'General purpose tasks', toolCalling: 'unknown' };
+            let matchedCaps = { domain: 'general', specialisms: 'General purpose tasks', toolCalling: 'unknown' };
             for (const [key, caps] of Object.entries(KNOWN_CAPABILITIES)) {
                 if (name.toLowerCase().includes(key)) {
                     matchedCaps = caps;
@@ -91,14 +91,10 @@ export function getBestLocalModel(requiredCapability) {
         // Boost score based on task capability
         if (requiredCapability === 'planner') {
             if (meta.toolCalling === 'very reliable' || meta.toolCalling === 'native best') score += 50;
-            if (meta.toolCalling === 'reliable') score += 20;
-            if (name.includes('gemma4') || name.includes('qwen2.5') || name.includes('hermes3')) score += 30;
-        } else if (requiredCapability === 'synthesiser') {
-            if (meta.specialisms.includes('Summarisation') || meta.specialisms.includes('conversation')) score += 20;
-            if (name.includes('llama3') || name.includes('qwen2.5')) score += 20;
-        } else if (requiredCapability === 'chat') {
-            if (meta.specialisms.includes('Complex') || meta.specialisms.includes('conversation')) score += 20;
-            if (name.includes('qwen2.5') || name.includes('gemma4') || name.includes('llama3.1') || name.includes('hermes3')) score += 20;
+            if (meta.domain === 'coding') score += 30; 
+        } else if (requiredCapability === 'synthesiser' || requiredCapability === 'chat') {
+            if (meta.domain === 'reasoning') score += 100;
+            if (meta.domain === 'general') score += 20;
         }
         
         if (score > maxScore) {
