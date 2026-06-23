@@ -339,6 +339,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.getElementById('disk-val').textContent = data.disk;
                 document.getElementById('disk-bar').style.width = `${data.disk}%`;
                 
+                if (data.gpu !== undefined) {
+                    const gpuVal = document.getElementById('gpu-val');
+                    if (gpuVal) gpuVal.textContent = data.gpu;
+                    const gpuBar = document.getElementById('gpu-bar');
+                    if (gpuBar) gpuBar.style.width = `${data.gpu}%`;
+                }
+                
+                if (data.vram !== undefined) {
+                    const vramVal = document.getElementById('vram-val');
+                    if (vramVal) vramVal.textContent = data.vram;
+                    const vramBar = document.getElementById('vram-bar');
+                    if (vramBar) vramBar.style.width = `${data.vram}%`;
+                }
+                
                 if (data.metrics) {
                     renderTelemetry(data.metrics, data.registry);
                 }

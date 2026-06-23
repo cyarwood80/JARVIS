@@ -69,11 +69,24 @@ export function setupAutonomousSensors() {
 }
 
 export async function getPcDiagnostics() {
-    const [cpu, mem, disk] = await Promise.all([si.currentLoad(), si.mem(), si.fsSize()]);
+    const [cpu, mem, disk, graphics] = await Promise.all([si.currentLoad(), si.mem(), si.fsSize(), si.graphics()]);
     const mainDisk = disk.find(d => d.mount === 'C:') || disk[0];
+    
+    let gpuLoad = 0;
+    let vramUsage = 0;
+    if (graphics && graphics.controllers && graphics.controllers.length > 0) {
+        const gpu = graphics.controllers[0];
+        gpuLoad = gpu.utilizationGpu || 0;
+        if (gpu.memoryTotal && gpu.memoryUsed) {
+            vramUsage = Math.round((gpu.memoryUsed / gpu.memoryTotal) * 100);
+        }
+    }
+
     return {
         cpu: Math.round(cpu.currentLoad),
         memory: Math.round((mem.active / mem.total) * 100),
-        disk: mainDisk ? Math.round(mainDisk.use) : 0
+        disk: mainDisk ? Math.round(mainDisk.use) : 0,
+        gpu: gpuLoad,
+        vram: vramUsage
     };
 }
