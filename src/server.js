@@ -11,6 +11,7 @@ import { startContextMonitors, startProactiveAgency, setupAutonomousSensors } fr
 import { updateInteractionTime, startSleepCycle } from './services/memory.service.js';
 import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel, getBestLocalModel } from './services/ai.service.js';
 import { addRagMemory } from './services/rag.service.js';
+import { checkAndPromptModels } from './services/hardware.service.js';
 import { executeTool } from './tools/executor.js';
 
 const app = express();
@@ -19,9 +20,15 @@ app.use(express.json());
 app.use(express.static(path.join(ROOT_DIR, 'public')));
 
 // ── WEBSOCKET SETUP ──────────────────────────────
-const server = app.listen(PORT, async () => {
-    console.log(`\n🚀 Jarvis AI Hub running on http://localhost:${PORT}`);
-    await refreshModels();
+export let systemHardwareProfile = null;
+
+(async () => {
+    // 1. Interactive Hardware Check (must happen before anything else so CLI prompt isn't buried)
+    systemHardwareProfile = await checkAndPromptModels();
+
+    const server = app.listen(PORT, async () => {
+        console.log(`\n🚀 Jarvis AI Hub running on http://localhost:${PORT}`);
+        await refreshModels();
     
     // Auto-start OpenClaw silently in background
     const openClawDir = path.join(ROOT_DIR, 'openclaw');
@@ -44,35 +51,37 @@ const server = app.listen(PORT, async () => {
     });
     
     startContextMonitors();
-    startProactiveAgency(msg => broadcastMsg(msg));
-    startSleepCycle();
-    setupAutonomousSensors();
-});
+        startProactiveAgency(msg => broadcastMsg(msg));
+        startSleepCycle();
+        setupAutonomousSensors();
+    });
 
-const wss = new WebSocketServer({ server });
-const clients = new Set();
-wss.on('connection', ws => {
-    clients.add(ws);
-    ws.send(JSON.stringify({ type: 'log', message: '🔗 Connected to Jarvis Console...' }));
-    ws.on('close', () => clients.delete(ws));
-});
+    const wss = new WebSocketServer({ server });
+    const clients = new Set();
+    wss.on('connection', ws => {
+        clients.add(ws);
+        ws.send(JSON.stringify({ type: 'log', message: '🔗 Connected to Jarvis Console...' }));
+        ws.on('close', () => clients.delete(ws));
+    });
 
-function broadcastLog(message) {
-    const payload = JSON.stringify({ type: 'log', message: message.trim() });
-    for (const c of clients) if (c.readyState === 1) c.send(payload);
-}
-function broadcastStatus(stage, message) {
-    const payload = JSON.stringify({ type: 'status', stage, message });
-    for (const c of clients) if (c.readyState === 1) c.send(payload);
-}
-function broadcastColdStart(modelShortName) {
-    const payload = JSON.stringify({ type: 'cold_start', model: modelShortName });
-    for (const c of clients) if (c.readyState === 1) c.send(payload);
-}
-function broadcastMsg(msgObj) {
-    const payload = JSON.stringify(msgObj);
-    for (const c of clients) if (c.readyState === 1) c.send(payload);
-}
+    // We export the broadcast functions safely below
+    global.broadcastLog = (message) => {
+        const payload = JSON.stringify({ type: 'log', message: message.trim() });
+        for (const c of clients) if (c.readyState === 1) c.send(payload);
+    };
+    global.broadcastStatus = (stage, message) => {
+        const payload = JSON.stringify({ type: 'status', stage, message });
+        for (const c of clients) if (c.readyState === 1) c.send(payload);
+    };
+    global.broadcastColdStart = (modelShortName) => {
+        const payload = JSON.stringify({ type: 'cold_start', model: modelShortName });
+        for (const c of clients) if (c.readyState === 1) c.send(payload);
+    };
+    global.broadcastMsg = (msgObj) => {
+        const payload = JSON.stringify(msgObj);
+        for (const c of clients) if (c.readyState === 1) c.send(payload);
+    };
+})();
 
 let openClawProcess = null;
 
@@ -142,8 +151,8 @@ app.post('/v1/chat/completions', async (req, res) => {
             let planningMessages = [...messages];
             if (errorFeedback) planningMessages.push({ role: 'user', content: `Error: ${errorFeedback}\nRevise plan.` });
             
-            plan = await jarvisPlan(planningMessages, broadcastLog, broadcastStatus);
-            if (!errorFeedback) broadcastStatus('planned', `🧠 Plan: ${plan.intent}`);
+            plan = await jarvisPlan(planningMessages, global.broadcastLog, global.broadcastStatus);
+            if (!errorFeedback) global.broadcastStatus('planned', `🧠 Plan: ${plan.intent}`);
         } catch {
             usedGeminiDirectly = true;
             break;
@@ -152,15 +161,15 @@ app.post('/v1/chat/completions', async (req, res) => {
         if (plan && !usedGeminiDirectly) {
             const assignedModel = plan.local_model;
             if (isModelCold(assignedModel) && LARGE_MODELS.has(assignedModel)) {
-                broadcastColdStart(assignedModel.split(':')[0]);
+                global.broadcastColdStart(assignedModel.split(':')[0]);
             }
 
             if (plan.needs_tool && plan.tool) {
                 toolName = plan.tool; toolArgs = plan.args || {}; toolWasUsed = true;
-                broadcastStatus('executing', `🔧 Executing ${toolName}...`);
+                global.broadcastStatus('executing', `🔧 Executing ${toolName}...`);
 
                 try {
-                    toolOutput = await executeTool(toolName, toolArgs, messages, broadcastMsg);
+                    toolOutput = await executeTool(toolName, toolArgs, messages, global.broadcastMsg);
                     markModelWarm(assignedModel);
                     modelUsed = assignedModel;
 
@@ -173,7 +182,7 @@ app.post('/v1/chat/completions', async (req, res) => {
                     errorFeedback = e.message; retryCount++; continue;
                 }
             } else {
-                broadcastStatus('generating', `💬 ${assignedModel} composing...`);
+                global.broadcastStatus('generating', `💬 ${assignedModel} composing...`);
                 try {
                     const localData = await runLocalModel(assignedModel, messages, null);
                     finalResponseText = localData.message?.content || "";
@@ -189,7 +198,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     if (toolWasUsed && toolOutput) {
         try {
-            const synthResult = await jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog, broadcastStatus);
+            const synthResult = await jarvisSynthesise(messages, toolName, toolArgs, toolOutput, global.broadcastLog, global.broadcastStatus);
             finalResponseText = synthResult.text;
             modelUsed = `${modelUsed} \u2192 ${synthResult.model}`;
         } catch {
@@ -201,7 +210,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         let localFailed = false;
         
         // 1. Try Local First
-        broadcastStatus('generating', '🧠 Local AI is responding...');
+        global.broadcastStatus('generating', '🧠 Local AI is responding...');
         try {
             const fallbackModel = getBestLocalModel('chat');
             const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
@@ -230,7 +239,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         // 2. Fall back to Cloud if Local Failed
         if (localFailed) {
             if (GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '') {
-                broadcastStatus('generating', '🌐 Local AI failed. Cloud AI (Gemini) is responding...');
+                global.broadcastStatus('generating', '🌐 Local AI failed. Cloud AI (Gemini) is responding...');
                 try {
                     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
                     const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
@@ -262,7 +271,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
     }
 
-    broadcastStatus('done', '');
+    global.broadcastStatus('done', '');
     res.json({
         id: `chatcmpl-${Date.now()}`,
         object: "chat.completion",

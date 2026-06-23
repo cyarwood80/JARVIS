@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GEMINI_API_KEY, OLLAMA_URL, METRICS, MODEL_REGISTRY, setModelRegistry, markModelWarm } from '../config.js';
 import { activeWindowContext, clipboardContext } from './system.service.js';
 import { getCoreMemory } from './memory.service.js';
+import { systemHardwareProfile } from './hardware.service.js';
 
 const KNOWN_CAPABILITIES = {
     'hermes3': { domain: 'general', specialisms: 'OS commands, system queries, user/session info, event logs, file operations, network info', toolCalling: 'reliable' },
@@ -95,6 +96,14 @@ export function getBestLocalModel(requiredCapability) {
         } else if (requiredCapability === 'synthesiser' || requiredCapability === 'chat') {
             if (meta.domain === 'reasoning') score += 100;
             if (meta.domain === 'general') score += 20;
+        }
+
+        // HARDWARE LIMITER: Prevent Out-Of-Memory crashes
+        if (systemHardwareProfile && systemHardwareProfile.ramGB) {
+            // Give a 2GB buffer for OS overhead. If model exceeds RAM, nuke its score.
+            if (sizeGB > (systemHardwareProfile.ramGB - 2)) {
+                score -= 1000;
+            }
         }
         
         if (score > maxScore) {
