@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@inquirer/prompts": "^8.5.2",
     "active-win": "^8.2.1",
     "chokidar": "^5.0.0",
     "clipboardy": "^5.3.1",

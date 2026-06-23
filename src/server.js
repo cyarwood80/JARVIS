@@ -11,7 +11,7 @@ import { startContextMonitors, startProactiveAgency, setupAutonomousSensors } fr
 import { updateInteractionTime, startSleepCycle } from './services/memory.service.js';
 import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel, getBestLocalModel } from './services/ai.service.js';
 import { addRagMemory } from './services/rag.service.js';
-import { checkAndPromptModels } from './services/hardware.service.js';
+import { getHardwareProfile } from './services/hardware.service.js';
 import { initializeAgentIdentity } from './services/setup.service.js';
 import { executeTool } from './tools/executor.js';
 
@@ -28,8 +28,8 @@ export let currentAgentName = "Jarvis";
     // 1. Identity Check
     currentAgentName = await initializeAgentIdentity();
 
-    // 2. Interactive Hardware Check
-    systemHardwareProfile = await checkAndPromptModels();
+    // 2. Get Hardware Check (non-interactive)
+    systemHardwareProfile = await getHardwareProfile();
 
     const server = app.listen(PORT, async () => {
         console.log(`\n🚀 ${currentAgentName} AI Hub running on http://localhost:${PORT}`);

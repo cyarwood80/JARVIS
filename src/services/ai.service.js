@@ -1,8 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_API_KEY, OLLAMA_URL, METRICS, MODEL_REGISTRY, setModelRegistry, markModelWarm, AGENT_NAME } from '../config.js';
+import { GEMINI_API_KEY, OLLAMA_URL, METRICS, MODEL_REGISTRY, setModelRegistry, markModelWarm, AGENT_NAME, ROOT_DIR } from '../config.js';
 import { activeWindowContext, clipboardContext } from './system.service.js';
 import { getCoreMemory } from './memory.service.js';
 import { systemHardwareProfile } from './hardware.service.js';
+import fsSync from 'fs';
+import path from 'path';
 
 const KNOWN_CAPABILITIES = {
     'hermes3': { domain: 'general', specialisms: 'OS commands, system queries, user/session info, event logs, file operations, network info', toolCalling: 'reliable' },
@@ -75,7 +77,28 @@ function shouldFallbackToLocal(err) {
            msg.includes('api key');
 }
 
+let cachedFleetConfig = null;
+
+function loadFleetConfig() {
+    try {
+        const p = path.join(ROOT_DIR, 'vault', 'fleet_config.json');
+        if (fsSync.existsSync(p)) {
+            cachedFleetConfig = JSON.parse(fsSync.readFileSync(p, 'utf8'));
+        }
+    } catch { }
+}
+
 export function getBestLocalModel(requiredCapability) {
+    if (!cachedFleetConfig) loadFleetConfig();
+    
+    // 1. NATIVE ORCHESTRATION ROUTING (Gemini Curated Fleet)
+    if (cachedFleetConfig && cachedFleetConfig[requiredCapability]) {
+        const exactModel = cachedFleetConfig[requiredCapability];
+        // Ensure it hasn't been uninstalled
+        if (MODEL_REGISTRY[exactModel]) return exactModel;
+    }
+
+    // 2. FALLBACK SCORING LOGIC
     let bestModel = null;
     let maxScore = -1;
     
