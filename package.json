@@ -5,8 +5,8 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node --no-deprecation src/server.js",
-    "dev": "node --no-deprecation src/server.js",
+    "start": "npm install && node --no-deprecation src/server.js",
+    "dev": "npm install && node --no-deprecation src/server.js",
     "setup": "powershell -ExecutionPolicy Bypass -File setup.ps1"
   },
   "dependencies": {
