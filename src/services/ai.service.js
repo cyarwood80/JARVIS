@@ -74,6 +74,42 @@ function shouldFallbackToLocal(err) {
            msg.includes('api key');
 }
 
+export function getBestLocalModel(requiredCapability) {
+    let bestModel = null;
+    let maxScore = -1;
+    
+    // Fallback if registry is empty
+    const fallback = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
+    
+    for (const [name, meta] of Object.entries(MODEL_REGISTRY)) {
+        let score = 0;
+        
+        // Base score based on model size (bigger models = higher base score)
+        const sizeGB = parseFloat(meta.size) || 0;
+        score += sizeGB; 
+        
+        // Boost score based on task capability
+        if (requiredCapability === 'planner') {
+            if (meta.toolCalling === 'very reliable' || meta.toolCalling === 'native best') score += 50;
+            if (meta.toolCalling === 'reliable') score += 20;
+            if (name.includes('gemma4') || name.includes('qwen2.5') || name.includes('hermes3')) score += 30;
+        } else if (requiredCapability === 'synthesiser') {
+            if (meta.specialisms.includes('Summarisation') || meta.specialisms.includes('conversation')) score += 20;
+            if (name.includes('llama3') || name.includes('qwen2.5')) score += 20;
+        } else if (requiredCapability === 'chat') {
+            if (meta.specialisms.includes('Complex') || meta.specialisms.includes('conversation')) score += 20;
+            if (name.includes('qwen2.5') || name.includes('gemma4') || name.includes('llama3.1') || name.includes('hermes3')) score += 20;
+        }
+        
+        if (score > maxScore) {
+            maxScore = score;
+            bestModel = name;
+        }
+    }
+    
+    return bestModel || fallback;
+}
+
 export async function runLocalModel(modelName, messages, tools = null) {
     const coreMemory = await getCoreMemory();
     const currentTime = `\nThe current system date and time is: ${new Date().toLocaleString()}.\n`;
@@ -123,12 +159,13 @@ export async function cloudPlan(messages) {
 }
 
 export async function localPlan(messages) {
-    const latestPrompt = messages[messages.length - 1]?.content || "";
+    const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
     const coreMemory = await getCoreMemory();
     const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
-    const localPlanPrompt = PLANNER_SYSTEM_PROMPT + envContext + coreMemory + `\n\nUser message: "${latestPrompt}"\n\nOutput JSON:`;
+    const localPlanPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
     
-    const localData = await runLocalModel('gemma4:26b', [{ role: 'user', content: localPlanPrompt }]);
+    const bestModel = getBestLocalModel('planner');
+    const localData = await runLocalModel(bestModel, [{ role: 'user', content: localPlanPrompt }]);
     const cleaned = (localData.message?.content || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No valid JSON');
@@ -174,7 +211,8 @@ export async function localSynthesise(messages, toolOutput) {
     const historyText = messages.slice(-3, -1).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
     const prompt = `Recent context:\n${historyText}\nUser asked: "${userQuestion}"\nRaw output:\n${toolOutput}\nWrite a natural language response summarizing the output to the user.`;
     try {
-        const data = await runLocalModel('llama3:8b-instruct-q8_0', [{ role: 'user', content: prompt }]);
+        const bestModel = getBestLocalModel('synthesiser');
+        const data = await runLocalModel(bestModel, [{ role: 'user', content: prompt }]);
         return data.message?.content || `Output:\n${toolOutput}`;
     } catch {
         return `Output:\n${toolOutput}`;

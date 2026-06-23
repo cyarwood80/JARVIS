@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import { PORT, ROOT_DIR, GEMINI_API_KEY, MODEL_REGISTRY, modelWarmth, METRICS, COLD_THRESHOLD_MS, LARGE_MODELS, isModelCold, markModelWarm } from './config.js';
 import { startContextMonitors, startProactiveAgency, setupAutonomousSensors } from './services/system.service.js';
 import { updateInteractionTime, startSleepCycle } from './services/memory.service.js';
-import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel } from './services/ai.service.js';
+import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel, getBestLocalModel } from './services/ai.service.js';
 import { executeTool } from './tools/executor.js';
 
 const app = express();
@@ -134,7 +134,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     const isCloudEnabled = GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '';
     broadcastStatus('thinking', isCloudEnabled ? '⚡ Request received — Cloud AI (Gemini) is planning...' : '⚡ Request received — Local AI is planning...');
 
-    let plan, modelUsed = "gemini", toolWasUsed = false, toolName = null, toolArgs = {}, toolOutput = "";
+    let plan, modelUsed = "", toolWasUsed = false, toolName = null, toolArgs = {}, toolOutput = "";
     let retryCount = 0, errorFeedback = "", usedGeminiDirectly = false, finalResponseText = "";
 
     while (retryCount < 3) {
@@ -191,7 +191,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         broadcastStatus('synthesising', isCloudEnabled ? '✨ Cloud AI (Gemini) synthesising...' : '✨ Local AI synthesising...');
         try {
             finalResponseText = await jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog);
-            modelUsed += '+synthesiser';
+            modelUsed = `${modelUsed} \u2192 ${isCloudEnabled ? 'gemini-2.5-flash' : getBestLocalModel('synthesiser')}`;
         } catch {
             finalResponseText = `Output:\n${toolOutput}`;
         }
@@ -203,7 +203,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         // 1. Try Local First
         broadcastStatus('generating', '🧠 Local AI is responding...');
         try {
-            const fallbackModel = Object.keys(MODEL_REGISTRY)[0] || 'llama3.1:8b';
+            const fallbackModel = getBestLocalModel('chat');
             const formattedPrompt = messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n') + '\nASSISTANT:';
             
             const { OLLAMA_URL } = await import('./config.js');
