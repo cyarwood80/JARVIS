@@ -195,14 +195,17 @@ export async function cloudSynthesise(messages, toolName, toolArgs, toolOutput) 
     return result.response.text().trim();
 }
 
-export async function jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog) {
+export async function jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog, broadcastStatus) {
     try {
+        if (broadcastStatus) broadcastStatus('synthesising', '✨ Local AI synthesising...');
         const localResponse = await localSynthesise(messages, toolOutput);
-        if (localResponse.startsWith("Output:\\n")) throw new Error("Local model failed to synthesise");
-        return localResponse;
+        if (localResponse.startsWith("Output:\n")) throw new Error("Local model failed to synthesise");
+        return { text: localResponse, model: getBestLocalModel('synthesiser') };
     } catch (e) {
         broadcastLog('[Synthesiser] Local model failed — using Cloud fallback');
-        return await cloudSynthesise(messages, toolName, toolArgs, toolOutput);
+        if (broadcastStatus) broadcastStatus('synthesising', '✨ Cloud AI (Gemini) synthesising...');
+        const cloudText = await cloudSynthesise(messages, toolName, toolArgs, toolOutput);
+        return { text: cloudText, model: 'gemini-2.5-flash' };
     }
 }
 

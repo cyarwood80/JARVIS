@@ -188,10 +188,10 @@ app.post('/v1/chat/completions', async (req, res) => {
     }
 
     if (toolWasUsed && toolOutput) {
-        broadcastStatus('synthesising', isCloudEnabled ? '✨ Cloud AI (Gemini) synthesising...' : '✨ Local AI synthesising...');
         try {
-            finalResponseText = await jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog);
-            modelUsed = `${modelUsed} \u2192 ${isCloudEnabled ? 'gemini-2.5-flash' : getBestLocalModel('synthesiser')}`;
+            const synthResult = await jarvisSynthesise(messages, toolName, toolArgs, toolOutput, broadcastLog, broadcastStatus);
+            finalResponseText = synthResult.text;
+            modelUsed = `${modelUsed} \u2192 ${synthResult.model}`;
         } catch {
             finalResponseText = `Output:\n${toolOutput}`;
         }
