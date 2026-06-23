@@ -107,7 +107,7 @@ export function getBestLocalModel(requiredCapability) {
 }
 
 export async function runLocalModel(modelName, messages, tools = null) {
-    const coreMemory = await getCoreMemory();
+    const coreMemory = await getCoreMemory(messages);
     const currentTime = `\nThe current system date and time is: ${new Date().toLocaleString()}.\n`;
     const envContext = `The user's currently active window is: ${activeWindowContext}\nThe user's clipboard contains: "${clipboardContext}"\n`;
     const systemPrompt = tools
@@ -115,7 +115,7 @@ export async function runLocalModel(modelName, messages, tools = null) {
         : `You are JARVIS... Answer concisely.` + currentTime + envContext + coreMemory;
 
     const ollamaMessages = [{ role: "system", content: systemPrompt }, ...messages];
-    const body = { model: modelName, messages: ollamaMessages, stream: false };
+    const body = { model: modelName, messages: ollamaMessages, stream: false, keep_alive: "2h" };
     if (tools) body.tools = tools;
 
     const res = await fetch(`${OLLAMA_URL}/api/chat`, {
@@ -142,7 +142,7 @@ export async function cloudPlan(messages) {
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-    const coreMemory = await getCoreMemory();
+    const coreMemory = await getCoreMemory(messages);
     const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
     const plannerPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
 
@@ -156,7 +156,7 @@ export async function cloudPlan(messages) {
 
 export async function localPlan(messages) {
     const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-    const coreMemory = await getCoreMemory();
+    const coreMemory = await getCoreMemory(messages);
     const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
     const localPlanPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
     

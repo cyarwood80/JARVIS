@@ -10,6 +10,7 @@ import { PORT, ROOT_DIR, GEMINI_API_KEY, MODEL_REGISTRY, modelWarmth, METRICS, C
 import { startContextMonitors, startProactiveAgency, setupAutonomousSensors } from './services/system.service.js';
 import { updateInteractionTime, startSleepCycle } from './services/memory.service.js';
 import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel, getBestLocalModel } from './services/ai.service.js';
+import { addRagMemory } from './services/rag.service.js';
 import { executeTool } from './tools/executor.js';
 
 const app = express();
@@ -270,6 +271,10 @@ app.post('/v1/chat/completions', async (req, res) => {
         plan: plan || null,
         choices: [{ message: { role: "assistant", content: finalResponseText } }]
     });
+
+    if (userQuestion && finalResponseText && !usedGeminiDirectly) {
+        addRagMemory(`User: ${userQuestion}\nJarvis: ${finalResponseText}`);
+    }
 });
 
 process.on('SIGINT', () => {

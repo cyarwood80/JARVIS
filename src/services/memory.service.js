@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GEMINI_API_KEY, ROOT_DIR } from '../config.js';
+import { searchRagMemory, addRagMemory } from './rag.service.js';
 
 export let lastInteractionTime = Date.now();
 let hasConsolidatedMemoryToday = false;
@@ -56,13 +57,25 @@ Do not add conversational text, just output the pure Markdown.
     }, 60 * 1000);
 }
 
-export async function getCoreMemory() {
+export async function getCoreMemory(messages = []) {
     const memPath = path.join(ROOT_DIR, 'vault', 'chris.md');
+    let coreStr = '';
     if (await fileExists(memPath)) {
         const mem = await fs.readFile(memPath, 'utf8');
-        return mem ? `\n\n<LONG_TERM_MEMORY>\n${mem}\n</LONG_TERM_MEMORY>\n` : '';
+        if (mem) coreStr += `\n\n<LONG_TERM_MEMORY>\n${mem}\n</LONG_TERM_MEMORY>\n`;
     }
-    return '';
+
+    if (messages && messages.length > 0) {
+        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+        if (lastUserMsg) {
+            const ragResults = await searchRagMemory(lastUserMsg, 3);
+            if (ragResults && ragResults.length > 0) {
+                const ragText = ragResults.map(r => `[${r.timestamp}] ${r.text}`).join('\n');
+                coreStr += `\n<RELEVANT_PAST_MEMORIES>\n${ragText}\n</RELEVANT_PAST_MEMORIES>\n`;
+            }
+        }
+    }
+    return coreStr;
 }
 
 export async function manageMemoryAction(action, fact) {
@@ -76,6 +89,7 @@ export async function manageMemoryAction(action, fact) {
         const dateStr = new Date().toISOString().split('T')[0];
         const newFact = `- [${dateStr}] ${fact}\n`;
         await fs.appendFile(memFile, newFact, 'utf8');
+        await addRagMemory(fact);
         return `Successfully remembered: ${fact}`;
     } else if (action === 'read' || action === 'search') {
         if (await fileExists(memFile)) return await fs.readFile(memFile, 'utf8') || "Memory is currently empty.";
