@@ -168,13 +168,21 @@ Return STRICTLY raw JSON in the following format (no markdown, no backticks):
 
         } catch (e) {
             console.error(`\x1b[31m[!] Gemini Orchestration Failed:\x1b[0m`, e.message);
-            // Fallback to static if cloud fails
+            console.log("\x1b[33mUsing local static fallback recommendations due to Cloud API error.\x1b[0m");
+
+            const staticFallbacks = {
+                'A': { planner: 'qwen2.5:32b', synthesiser: 'gemma4:26b', chat: 'llama3.1:8b' },
+                'B': { planner: 'qwen2.5:14b', synthesiser: 'gemma2:9b', chat: 'llama3.1:8b' },
+                'C': { planner: 'llama3.1:8b', synthesiser: 'llama3:8b-instruct-q8_0', chat: 'llama3.1:8b' }
+            };
+            
+            const fallback = staticFallbacks[profile.tier] || staticFallbacks['C'];
+            
             finalFleet = [
-                { role: "planner", model: profile.recommendations.planner },
-                { role: "synthesiser", model: profile.recommendations.synthesiser },
-                { role: "chat", model: profile.recommendations.chat }
+                { role: "planner", model: fallback.planner },
+                { role: "synthesiser", model: fallback.synthesiser },
+                { role: "chat", model: fallback.chat }
             ];
-            console.log("\x1b[33mUsing fallback static recommendations.\x1b[0m");
         }
     }
 
