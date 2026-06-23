@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>J.A.R.V.I.S. — AI Hub</title>
-    <meta name="description" content="JARVIS AI Hub — Local AI orchestration with Gemini planning, multi-model routing, and real-time system control.">
+    <title>AI Hub</title>
+    <meta name="description" content="AI Hub — Local AI orchestration with Gemini planning, multi-model routing, and real-time system control.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
         <aside class="sidebar">
             <div class="logo-container">
                 <div class="core-mini"></div>
-                <h1 class="logo-text">J.A.R.V.I.S.</h1>
+                <h1 class="logo-text" id="brand-logo">J.A.R.V.I.S.</h1>
             </div>
 
             <nav class="nav-menu">
@@ -78,14 +78,14 @@
                     </div>
 
                     <div id="chat-history" class="chat-history">
-                        <div class="message system-msg">Welcome to <strong>J.A.R.V.I.S.</strong> — Offline-First AI Hub. System is ready.</div>
+                        <div class="message system-msg" id="welcome-msg">Welcome to <strong>J.A.R.V.I.S.</strong> — Offline-First AI Hub. System is ready.</div>
                     </div>
 
                     <div class="input-area">
                         <button id="voice-btn" class="icon-btn voice-btn" title="Toggle Voice Recognition">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
                         </button>
-                        <input type="text" id="chat-input" placeholder="Ask Jarvis anything about your PC or the world..." autocomplete="off">
+                        <input type="text" id="chat-input" placeholder="Ask your Agent anything about your PC or the world..." autocomplete="off">
                         <button id="send-btn" class="action-btn">Send</button>
                     </div>
                 </div>
@@ -155,7 +155,7 @@
             <section id="openclaw-view" class="view-section">
                 <h2 class="section-title">OpenClaw Gateway</h2>
                 <div class="card">
-                    <p class="description">Traffic Master for WhatsApp → JARVIS routing. Manages session state, sends immediate acknowledgments, and routes to the right specialist model.</p>
+                    <p class="description">Traffic Master for WhatsApp → Local Agent routing. Manages session state, sends immediate acknowledgments, and routes to the right specialist model.</p>
                     <div class="action-row">
                         <button id="start-openclaw-btn" class="action-btn success">Start Gateway</button>
                         <button id="stop-openclaw-btn" class="action-btn danger">Stop Gateway</button>
@@ -177,7 +177,7 @@
             <!-- ═══════════════════════════════════════ -->
             <section id="vault-view" class="view-section">
                 <h2 class="section-title">Automation Vault</h2>
-                <p class="section-description">A curated library of reusable scripts Jarvis has built for you.</p>
+                <p class="section-description">A curated library of reusable scripts your Agent has built for you.</p>
                 <div class="models-grid" id="vault-grid">
                     <div class="model-fleet-card loading">
                         <div>Loading scripts...</div>

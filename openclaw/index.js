@@ -6,6 +6,17 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 
+let agentName = "Jarvis";
+try {
+    const configPath = path.join(__dirname, '..', 'vault', 'agent_config.json');
+    if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.agentName) agentName = config.agentName;
+    }
+} catch (e) {
+    // Keep default
+}
+
 let browserExecutablePath;
 try {
     const puppeteerPath = require('puppeteer').executablePath();
@@ -81,16 +92,16 @@ client.on('ready', () => {
         console.log('Initial setup complete! Exiting setup mode...');
         process.exit(0);
     }
-    console.log('Listening for messages with wake word "jarvis"...');
+    console.log(`Listening for messages with wake word "${agentName.toLowerCase()}"...`);
 });
 
 client.on('message_create', async (msg) => {
-    // Prevent infinite loops: ignore Jarvis's own replies
-    if (msg.body.startsWith('[Jarvis]') || msg.fromMe && msg.body.startsWith('[Jarvis]')) {
+    // Prevent infinite loops: ignore Agent's own replies
+    if (msg.body.startsWith(`[${agentName}]`) || (msg.fromMe && msg.body.startsWith(`[${agentName}]`))) {
         return;
     }
 
-    const isJarvis = msg.body.toLowerCase().includes('jarvis');
+    const isJarvis = msg.body.toLowerCase().includes(agentName.toLowerCase());
     const sessionActive = activeSessions.has(msg.from) &&
         (Date.now() - activeSessions.get(msg.from) < SESSION_WINDOW_MS);
 
@@ -131,7 +142,7 @@ client.on('message_create', async (msg) => {
     // User never waits in silence regardless of model cold-start
     // ──────────────────────────────────────────────────────────
     try {
-        await msg.reply('[Jarvis] ⚡ Request received — working on it...');
+        await msg.reply(`[${agentName}] ⚡ Request received — working on it...`);
         console.log('[ACK] Immediate acknowledgment sent to WhatsApp.');
     } catch (ackErr) {
         console.error('[ACK] Failed to send acknowledgment:', ackErr.message);
@@ -157,12 +168,12 @@ client.on('message_create', async (msg) => {
             if (planData && LARGE_MODELS.has(planData.local_model)) {
                 const modelShortName = planData.local_model.split(':')[0];
                 await msg.reply(
-                    `[Jarvis] 🧠 Routing to ${modelShortName} — a specialist model for this task. ` +
+                    `[${agentName}] 🧠 Routing to ${modelShortName} — a specialist model for this task. ` +
                     `If it hasn't been used recently, this may take ~30s. Hang tight!`
                 );
                 console.log(`[COLD-START WARN] Sent large model warning for ${planData.local_model}`);
             } else if (planData && planData.needs_tool) {
-                await msg.reply('[Jarvis] 🔧 Running a system command on your PC, will report back shortly...');
+                await msg.reply(`[${agentName}] 🔧 Running a system command on your PC, will report back shortly...`);
             }
         }
     } catch (planErr) {
@@ -196,7 +207,7 @@ client.on('message_create', async (msg) => {
 
         if (!res.ok || !data.choices) {
             console.error('[PROXY ERROR]', data.error || data);
-            await msg.reply('[Jarvis] ❌ System error — check the server logs for details.');
+            await msg.reply(`[${agentName}] ❌ System error — check the server logs for details.`);
             history.pop(); // Remove failed message from history
             return;
         }
@@ -211,12 +222,12 @@ client.on('message_create', async (msg) => {
         console.log(`[RESPONSE] Sending to WhatsApp...`);
 
         // Send the final response
-        await msg.reply('[Jarvis] ' + responseText);
+        await msg.reply(`[${agentName}] ` + responseText);
         console.log('[SUCCESS] Reply sent ✅');
 
     } catch (e) {
         console.error('[ERROR] Failed to reach Jarvis Proxy:', e.message);
-        await msg.reply('[Jarvis] ⚠️ I had trouble connecting to my neural net. Please check the server is running.');
+        await msg.reply(`[${agentName}] ⚠️ I had trouble connecting to my neural net. Please check the server is running.`);
     }
 });
 
@@ -252,7 +263,7 @@ app.post('/api/send', async (req, res) => {
     if (!message) return res.status(400).json({ error: 'Message is required.' });
 
     try {
-        await client.sendMessage(target, '[Jarvis] ' + message);
+        await client.sendMessage(target, `[${agentName}] ` + message);
         console.log(`[PUSH] Sent autonomous message to ${target}`);
         res.json({ success: true });
     } catch (e) {

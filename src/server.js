@@ -12,6 +12,7 @@ import { updateInteractionTime, startSleepCycle } from './services/memory.servic
 import { refreshModels, jarvisPlan, jarvisSynthesise, runLocalModel, getBestLocalModel } from './services/ai.service.js';
 import { addRagMemory } from './services/rag.service.js';
 import { checkAndPromptModels } from './services/hardware.service.js';
+import { initializeAgentIdentity } from './services/setup.service.js';
 import { executeTool } from './tools/executor.js';
 
 const app = express();
@@ -21,13 +22,17 @@ app.use(express.static(path.join(ROOT_DIR, 'public')));
 
 // ── WEBSOCKET SETUP ──────────────────────────────
 export let systemHardwareProfile = null;
+export let currentAgentName = "Jarvis";
 
 (async () => {
-    // 1. Interactive Hardware Check (must happen before anything else so CLI prompt isn't buried)
+    // 1. Identity Check
+    currentAgentName = await initializeAgentIdentity();
+
+    // 2. Interactive Hardware Check
     systemHardwareProfile = await checkAndPromptModels();
 
     const server = app.listen(PORT, async () => {
-        console.log(`\n🚀 Jarvis AI Hub running on http://localhost:${PORT}`);
+        console.log(`\n🚀 ${currentAgentName} AI Hub running on http://localhost:${PORT}`);
         await refreshModels();
     
     // Auto-start OpenClaw silently in background
@@ -60,7 +65,7 @@ export let systemHardwareProfile = null;
     const clients = new Set();
     wss.on('connection', ws => {
         clients.add(ws);
-        ws.send(JSON.stringify({ type: 'log', message: '🔗 Connected to Jarvis Console...' }));
+        ws.send(JSON.stringify({ type: 'log', message: `🔗 Connected to ${currentAgentName} Console...` }));
         ws.on('close', () => clients.delete(ws));
     });
 
@@ -107,6 +112,10 @@ app.get('/api/warmth', (req, res) => {
         };
     }
     res.json(status);
+});
+
+app.get('/api/config', (req, res) => {
+    res.json({ agentName: currentAgentName });
 });
 
 app.post('/api/plan', async (req, res) => {

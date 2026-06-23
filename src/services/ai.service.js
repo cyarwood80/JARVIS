@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_API_KEY, OLLAMA_URL, METRICS, MODEL_REGISTRY, setModelRegistry, markModelWarm } from '../config.js';
+import { GEMINI_API_KEY, OLLAMA_URL, METRICS, MODEL_REGISTRY, setModelRegistry, markModelWarm, AGENT_NAME } from '../config.js';
 import { activeWindowContext, clipboardContext } from './system.service.js';
 import { getCoreMemory } from './memory.service.js';
 import { systemHardwareProfile } from './hardware.service.js';
@@ -12,7 +12,7 @@ const KNOWN_CAPABILITIES = {
     'llama3': { domain: 'general', specialisms: 'Summarisation, condensing long tool outputs, instruction following', toolCalling: 'limited' }
 };
 
-const PLANNER_SYSTEM_PROMPT = `You are JARVIS's planning brain running on a Windows 11 PC. Your ONLY job is to analyse the user's intent and output a precise JSON execution plan.
+const getPlannerPrompt = () => `You are ${AGENT_NAME}'s planning brain running on a Windows 11 PC. Your ONLY job is to analyse the user's intent and output a precise JSON execution plan.
 
 Available tools:
   - execute_command(command): Run any PowerShell command on the user's Windows PC
@@ -120,8 +120,8 @@ export async function runLocalModel(modelName, messages, tools = null) {
     const currentTime = `\nThe current system date and time is: ${new Date().toLocaleString()}.\n`;
     const envContext = `The user's currently active window is: ${activeWindowContext}\nThe user's clipboard contains: "${clipboardContext}"\n`;
     const systemPrompt = tools
-        ? `You are JARVIS... You MUST call the tool immediately. Execute the tool now.` + currentTime + envContext + coreMemory
-        : `You are JARVIS... Answer concisely.` + currentTime + envContext + coreMemory;
+        ? `You are ${AGENT_NAME}... You MUST call the tool immediately. Execute the tool now.` + currentTime + envContext + coreMemory
+        : `You are ${AGENT_NAME}... Answer concisely.` + currentTime + envContext + coreMemory;
 
     const ollamaMessages = [{ role: "system", content: systemPrompt }, ...messages];
     const body = { model: modelName, messages: ollamaMessages, stream: false, keep_alive: "2h" };
@@ -153,7 +153,7 @@ export async function cloudPlan(messages) {
     const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
     const coreMemory = await getCoreMemory(messages);
     const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
-    const plannerPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
+    const plannerPrompt = `${getPlannerPrompt()}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
 
     const result = await model.generateContent(plannerPrompt);
     if (result.response.usageMetadata) METRICS.totalTokensPublic += result.response.usageMetadata.totalTokenCount;
@@ -167,7 +167,7 @@ export async function localPlan(messages) {
     const recentContext = messages.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
     const coreMemory = await getCoreMemory(messages);
     const envContext = `Active window: ${activeWindowContext}\nClipboard: "${clipboardContext}"\n`;
-    const localPlanPrompt = `${PLANNER_SYSTEM_PROMPT}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
+    const localPlanPrompt = `${getPlannerPrompt()}${envContext}${coreMemory}\n\nContext:\n${recentContext}\n\nOutput JSON:`;
     
     const bestModel = getBestLocalModel('planner');
     const localData = await runLocalModel(bestModel, [{ role: 'user', content: localPlanPrompt }]);

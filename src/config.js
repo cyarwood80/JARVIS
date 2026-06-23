@@ -23,6 +23,12 @@ export const METRICS = {
 };
 export let MODEL_REGISTRY = {};
 
+export let AGENT_NAME = "Jarvis";
+
+export function setAgentName(name) {
+    AGENT_NAME = name;
+}
+
 export function setModelRegistry(registry) {
     MODEL_REGISTRY = registry;
 }

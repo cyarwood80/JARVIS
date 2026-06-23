@@ -1,4 +1,27 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+
+    let agentName = "Jarvis";
+    
+    try {
+        const configRes = await fetch('/api/config');
+        if (configRes.ok) {
+            const data = await configRes.json();
+            if (data.agentName) {
+                agentName = data.agentName;
+                document.title = `${agentName} — AI Hub`;
+                const brandLogo = document.getElementById('brand-logo');
+                if (brandLogo) brandLogo.textContent = agentName.toUpperCase();
+                
+                const welcomeMsg = document.getElementById('welcome-msg');
+                if (welcomeMsg) welcomeMsg.innerHTML = `Welcome to <strong>${agentName.toUpperCase()}</strong> — Offline-First AI Hub. System is ready.`;
+                
+                const chatInput = document.getElementById('chat-input');
+                if (chatInput) chatInput.placeholder = `Ask ${agentName} anything about your PC or the world...`;
+            }
+        }
+    } catch (e) {
+        // Keep default
+    }
 
     // ══════════════════════════════════════════
     // NAV LOGIC
@@ -512,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
             grid.innerHTML = '';
             
             if (!data.scripts || data.scripts.length === 0) {
-                grid.innerHTML = '<div class="model-fleet-card loading"><div>The Automation Vault is empty. Ask Jarvis to create a script!</div></div>';
+                grid.innerHTML = `<div class="model-fleet-card loading"><div>The Automation Vault is empty. Ask ${agentName} to create a script!</div></div>`;
                 return;
             }
 
