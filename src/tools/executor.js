@@ -167,9 +167,13 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
         const approvedCmds = await getApprovedCommands();
         const isApproved = approvedCmds.includes(commandStr);
         
-        if (!isApproved) {
+        const READ_ONLY_PREFIXES = ['ipconfig', 'ping', 'dir', 'ls', 'echo', 'whoami', 'get-', 'systeminfo', 'netstat', 'tasklist', 'tree'];
+        const isReadOnly = READ_ONLY_PREFIXES.some(prefix => commandStr.toLowerCase().startsWith(prefix));
+        
+        if (!isApproved && !isReadOnly) {
             const lastMsg = chatHistory[chatHistory.length - 1]?.content?.toLowerCase() || "";
-            const permissionGranted = lastMsg.includes('yes') || lastMsg.includes('approve') || lastMsg.includes('proceed');
+            const GRANT_WORDS = ['yes', 'approve', 'proceed', 'permission', 'granted', 'go ahead', 'do it', 'run it', 'ok', 'sure', 'fine', 'authorized', 'authorise'];
+            const permissionGranted = GRANT_WORDS.some(w => lastMsg.includes(w));
             
             if (!permissionGranted) {
                 return `SECURITY BLOCK: Command '${commandStr}' is unapproved. You MUST ask the user for explicit permission to run it, and ask if they want to whitelist it.`;
@@ -178,7 +182,7 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
             // If we have permission, check if they wanted to whitelist it
             if (lastMsg.includes('whitelist') || lastMsg.includes('remember') || lastMsg.includes('always')) {
                 await addApprovedCommand(commandStr);
-                if (broadcastMsg) broadcastMsg({ type: 'log', message: `✅ Command added to approved whitelist.` });
+                if (broadcastMsg) broadcastMsg({ type: 'log', message: `\u2705 Command added to approved whitelist.` });
             }
         }
 
