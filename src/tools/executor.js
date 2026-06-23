@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
-import { search, SafeSearchType } from 'duck-duck-scrape';
+import googleIt from 'google-it';
 import notifier from 'node-notifier';
 import puppeteer from 'puppeteer';
 import { ROOT_DIR, PORT } from '../config.js';
@@ -116,12 +116,12 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
 
     if (name === 'search_web') {
         try {
-            const results = await search(args.query, { safeSearch: SafeSearchType.MODERATE });
-            if (!results.results || results.results.length === 0) {
+            const results = await googleIt({ query: args.query, disableConsole: true });
+            if (!results || results.length === 0) {
                 return `No web search results found for: ${args.query}`;
             }
-            const topResults = results.results.slice(0, 3).map(r => 
-                `TITLE: ${r.title}\nURL: ${r.url}\nSUMMARY: ${r.description}\n`
+            const topResults = results.slice(0, 3).map(r => 
+                `TITLE: ${r.title}\nURL: ${r.link}\nSUMMARY: ${r.snippet}\n`
             ).join('\n---\n');
             return `Web Search Results for "${args.query}":\n\n${topResults}`;
         } catch (err) {
