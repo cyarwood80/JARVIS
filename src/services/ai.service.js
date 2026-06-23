@@ -84,9 +84,9 @@ export function getBestLocalModel(requiredCapability) {
     for (const [name, meta] of Object.entries(MODEL_REGISTRY)) {
         let score = 0;
         
-        // Base score based on model size (bigger models = higher base score)
+        // Base score based on model size (bigger models = vastly higher base score)
         const sizeGB = parseFloat(meta.size) || 0;
-        score += sizeGB; 
+        score += (sizeGB * 10); 
         
         // Boost score based on task capability
         if (requiredCapability === 'planner') {
@@ -173,11 +173,13 @@ export async function localPlan(messages) {
     return JSON.parse(jsonMatch[0]);
 }
 
-export async function jarvisPlan(messages, broadcastLog) {
+export async function jarvisPlan(messages, broadcastLog, broadcastStatus) {
     try {
+        if (broadcastStatus) broadcastStatus('thinking', '⚡ Request received — Local AI is planning...');
         return await localPlan(messages);
     } catch (localError) {
         broadcastLog('[Local Planner] Failed or unavailable. Falling back to Cloud AI (Gemini)...');
+        if (broadcastStatus) broadcastStatus('thinking', '⚡ Request received — Cloud AI (Gemini) is planning...');
         return await cloudPlan(messages);
     }
 }

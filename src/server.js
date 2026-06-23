@@ -131,8 +131,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     
     console.log(`\n[PROXY] Received: "${userQuestion}"`);
     
-    const isCloudEnabled = GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '';
-    broadcastStatus('thinking', isCloudEnabled ? '⚡ Request received — Cloud AI (Gemini) is planning...' : '⚡ Request received — Local AI is planning...');
+    broadcastStatus('thinking', '⚡ Request received — Local AI is planning...');
 
     let plan, modelUsed = "", toolWasUsed = false, toolName = null, toolArgs = {}, toolOutput = "";
     let retryCount = 0, errorFeedback = "", usedGeminiDirectly = false, finalResponseText = "";
@@ -142,7 +141,7 @@ app.post('/v1/chat/completions', async (req, res) => {
             let planningMessages = [...messages];
             if (errorFeedback) planningMessages.push({ role: 'user', content: `Error: ${errorFeedback}\nRevise plan.` });
             
-            plan = await jarvisPlan(planningMessages, broadcastLog);
+            plan = await jarvisPlan(planningMessages, broadcastLog, broadcastStatus);
             if (!errorFeedback) broadcastStatus('planned', `🧠 Plan: ${plan.intent}`);
         } catch {
             usedGeminiDirectly = true;
