@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import googleIt from 'google-it';
 import notifier from 'node-notifier';
 import puppeteer from 'puppeteer';
-import { ROOT_DIR, PORT } from '../config.js';
+import { ROOT_DIR, PORT, AGENT_NAME } from '../config.js';
 import { manageMemoryAction } from '../services/memory.service.js';
 import { getPcDiagnostics } from '../services/system.service.js';
 
@@ -79,7 +79,7 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
         if (await fileExists(metaPath)) {
             meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
         }
-        meta[filename] = args.description || 'Created by Jarvis';
+        meta[filename] = args.description || `Created by ${AGENT_NAME}`;
         await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
 
         return `Successfully saved script: ${filename} to the Automation Vault.`;
@@ -187,7 +187,7 @@ export async function executeTool(name, args, chatHistory, broadcastMsg) {
         }
 
         return new Promise(async (resolve) => {
-            const tmpFile = path.join(ROOT_DIR, `_jarvis_tmp_${Date.now()}.ps1`);
+            const tmpFile = path.join(ROOT_DIR, `_${AGENT_NAME}_tmp_${Date.now()}.ps1`);
             await fs.writeFile(tmpFile, commandStr, 'utf8');
             exec(`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${tmpFile}"`,
                 { timeout: 15000 },

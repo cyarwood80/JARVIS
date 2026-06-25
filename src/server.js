@@ -131,10 +131,27 @@ app.get('/api/scripts', async (req, res) => {
     const scriptsDir = path.join(ROOT_DIR, 'scripts');
     try {
         await fs.access(scriptsDir);
-        const files = (await fs.readdir(scriptsDir)).filter(f => f.endsWith('.ps1') || f.endsWith('.js'));
+        
+        async function getFiles(dir, prefix = '') {
+            let results = [];
+            const list = await fs.readdir(dir, { withFileTypes: true });
+            for (const file of list) {
+                if (file.isDirectory()) {
+                    const subResults = await getFiles(path.join(dir, file.name), path.join(prefix, file.name));
+                    results = results.concat(subResults);
+                } else if (file.name.endsWith('.ps1') || file.name.endsWith('.js')) {
+                    // Use forward slashes for cross-platform consistency in meta.json mapping
+                    const relPath = path.join(prefix, file.name).replace(/\\/g, '/');
+                    results.push(relPath);
+                }
+            }
+            return results;
+        }
+        
+        const files = await getFiles(scriptsDir);
         let meta = {};
         try { meta = JSON.parse(await fs.readFile(path.join(scriptsDir, 'meta.json'), 'utf8')); } catch {}
-        res.json({ scripts: files.map(f => ({ name: f, description: meta[f] || '', size: 0 })) });
+        res.json({ scripts: files.map(f => ({ name: f, description: meta[f] || meta[path.basename(f)] || '', size: 0 })) });
     } catch {
         res.json({ scripts: [] });
     }
